@@ -1,0 +1,32 @@
+# Node.js / React
+frontend/monitor-frontend/node_modules/
+frontend/monitor-frontend/build/
+frontend/monitor-frontend/.env.local
+frontend/monitor-frontend/.env.*.local
+
+# Java / Spring Boot
+backend/monitor-backend/target/
+backend/monitor-backend/.mvn/
+backend/monitor-backend/mvnw
+backend/monitor-backend/mvnw.cmd
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Docker / Env
+.env                # bỏ qua file .env thật
+.env.local          # bỏ qua file env riêng từng máy
+.env.development.local
+.env.test.local
+.env.production.local
+docker/*.log

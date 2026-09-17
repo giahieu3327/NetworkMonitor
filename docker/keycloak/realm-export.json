@@ -1,0 +1,82 @@
+{
+  "realm": "monitor-realm",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "ROLE_SUPER_ADMIN",
+        "description": "Quản trị viên Cao cấp - Toàn quyền hệ thống Web, User và Cấu hình"
+      },
+      {
+        "name": "ROLE_NETWORK_ADMIN",
+        "description": "Quản trị Hạ tầng - Quản lý thiết bị, cấu hình ngưỡng và sơ đồ Topology"
+      },
+      {
+        "name": "ROLE_NOC_OPERATOR",
+        "description": "Kỹ sư Trực NOC - Theo dõi Dashboard real-time, tiếp nhận và duyệt Acknowledge Ticket (Camunda Workflow)"
+      },
+      {
+        "name": "ROLE_AUDITOR",
+        "description": "Chuyên viên Kiểm toán - Xem Audit Logs và lịch sử thao tác hệ thống"
+      },
+      {
+        "name": "ROLE_REPORT_MANAGER",
+        "description": "Quản lý Báo cáo - Tùy chỉnh và xuất báo cáo SLA Uptime qua JasperReports"
+      },
+      {
+        "name": "ROLE_GUEST_VIEWER",
+        "description": "Người xem Giới hạn - Chỉ xem Dashboard tổng quan dạng Read-Only"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "monitor-frontend",
+      "name": "Monitor Frontend React App",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost",
+        "+"
+      ],
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "monitor-backend",
+      "name": "Monitor Backend Spring Boot API",
+      "enabled": true,
+      "bearerOnly": true
+    }
+  ]
+}
