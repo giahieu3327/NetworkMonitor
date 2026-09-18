@@ -1,23 +1,27 @@
 package com.monitor.backend.healthcheck;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.stereotype.Service;
 
-@RestController
-public class DatabaseHealthCheck {
+@Service
+public class DatabaseHealthCheck implements ApplicationRunner {
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    private final JdbcTemplate jdbcTemplate;
 
-    @GetMapping("/health/db")
-    public String checkDatabase() {
+    public DatabaseHealthCheck(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    @Override
+    public void run(ApplicationArguments args) {
         try {
             jdbcTemplate.execute("SELECT 1");
-            return "PostgreSQL connection OK";
+            System.out.println("[OK] PostgreSQL connection OK");
         } catch (Exception e) {
-            return "PostgreSQL connection FAILED: " + e.getMessage();
+            System.out.println("[FAILED] PostgreSQL connection FAILED");
+            System.out.println("        Error: " + e.getMessage());
         }
     }
 }

@@ -59,7 +59,8 @@ keycloak:
     username: admin        # Username admin quản trị của Keycloak (master realm)
     password: Admin@123        # Password admin của Keycloak
     client-id: admin-cli
-
+  user-client-id: monitor-frontend
+  
 # Cấu hình tài khoản Admin mặc định cho ứng dụng Monitor
 app:
   admin:

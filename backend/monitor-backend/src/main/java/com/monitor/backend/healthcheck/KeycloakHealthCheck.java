@@ -1,22 +1,30 @@
 package com.monitor.backend.healthcheck;
 
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-@RestController
-public class KeycloakHealthCheck {
+@Service
+public class KeycloakHealthCheck implements ApplicationRunner {
 
-    private final String keycloakUrl = "http://localhost:8080/realms/monitor-realm";
+    private final RestTemplate restTemplate;
 
-    @GetMapping("/health/keycloak")
-    public String checkKeycloak() {
+    private final String keycloakUrl =
+            "http://localhost:8080/realms/monitor-realm";
+
+    public KeycloakHealthCheck() {
+        this.restTemplate = new RestTemplate();
+    }
+
+    @Override
+    public void run(ApplicationArguments args) {
         try {
-            RestTemplate restTemplate = new RestTemplate();
             restTemplate.getForObject(keycloakUrl, String.class);
-            return "Keycloak connection OK";
+            System.out.println("[OK] Keycloak connection OK");
         } catch (Exception e) {
-            return "Keycloak connection FAILED: " + e.getMessage();
+            System.out.println("[FAILED] Keycloak connection FAILED");
+            System.out.println("        Error: " + e.getMessage());
         }
     }
 }
