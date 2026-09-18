@@ -1,32 +1,56 @@
-# Node.js / React
-frontend/monitor-frontend/node_modules/
-frontend/monitor-frontend/build/
-frontend/monitor-frontend/.env.local
-frontend/monitor-frontend/.env.*.local
-
-# Java / Spring Boot
-backend/monitor-backend/target/
-backend/monitor-backend/.mvn/
-backend/monitor-backend/mvnw
-backend/monitor-backend/mvnw.cmd
-
-# Logs
-*.log
-logs/
-
-# OS files
+# Root & General OS Files
 .DS_Store
 Thumbs.db
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# IDE files
-.idea/
-.vscode/
-*.iml
-
-# Docker / Env
-.env                # bỏ qua file .env thật
-.env.local          # bỏ qua file env riêng từng máy
+# Environment & Secrets
+.env
+.env.local
 .env.development.local
 .env.test.local
 .env.production.local
 docker/*.log
+
+# IDE & Editor Files
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# Frontend (React) - monitor-frontend
+frontend/monitor-frontend/node_modules/
+frontend/monitor-frontend/build/
+frontend/monitor-frontend/coverage/
+frontend/monitor-frontend/.pnp
+frontend/monitor-frontend/.pnp.js
+frontend/monitor-frontend/.env.local
+frontend/monitor-frontend/.env.*.local
+
+# Backend (Spring Boot) - monitor-backend
+backend/monitor-backend/target/
+backend/monitor-backend/build/
+backend/monitor-backend/.mvn/
+backend/monitor-backend/mvnw
+backend/monitor-backend/mvnw.cmd
+backend/monitor-backend/HELP.md
+!**/src/main/**/target/
+!**/src/test/**/target/
+!**/src/main/**/build/
+!**/src/test/**/build/
