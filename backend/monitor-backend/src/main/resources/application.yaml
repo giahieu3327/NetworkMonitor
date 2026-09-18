@@ -51,6 +51,25 @@ spring:
           issuer-uri: http://localhost:8080/realms/monitor-realm
           jwk-set-uri: http://localhost:8080/realms/monitor-realm/protocol/openid-connect/certs
 
+# Cấu hình Keycloak Admin Client
+keycloak:
+  server-url: http://localhost:8080
+  realm: monitor-realm
+  admin:
+    username: admin        # Username admin quản trị của Keycloak (master realm)
+    password: Admin@123        # Password admin của Keycloak
+    client-id: admin-cli
+
+# Cấu hình tài khoản Admin mặc định cho ứng dụng Monitor
+app:
+  admin:
+    username: admin
+    email: admin@monitor.com
+    password: Admin@123
+    full-name: System Administrator
+    phone: "0900000000"
+    role: ROLE_SUPER_ADMIN
+
 # 7. MyBatis Config
 mybatis:
   mapper-locations: classpath:mapper/*.xml
