@@ -116,6 +116,13 @@
 			<scope>test</scope>
 		</dependency>
 
+		<!-- 13. Keycloak Admin Client -->
+		<dependency>
+			<groupId>org.keycloak</groupId>
+			<artifactId>keycloak-admin-client</artifactId>
+			<version>26.0.0</version>
+		</dependency>
+
 		<!-- Test dependencies bổ sung tương thích với Boot 4 -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
