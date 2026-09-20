@@ -71,7 +71,11 @@ public class AuthService {
         if (realmAccess != null && realmAccess.containsKey("roles")) {
             @SuppressWarnings("unchecked")
             List<String> realmRoles = (List<String>) realmAccess.get("roles");
-            roles = realmRoles;
+            
+            // Chỉ lấy những role bắt đầu bằng tiền tố "ROLE_"
+            roles = realmRoles.stream()
+                    .filter(role -> role != null && role.startsWith("ROLE_"))
+                    .collect(java.util.stream.Collectors.toList());
         }
 
         return userService.getCurrentUserProfile(userId, roles);

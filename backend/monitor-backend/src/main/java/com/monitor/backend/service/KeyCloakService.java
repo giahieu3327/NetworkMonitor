@@ -196,15 +196,9 @@ public class KeyCloakService {
     }
 
     public List<com.monitor.backend.model.dto.RoleResponse> getAllRealmRoles() {
-        // Các role mặc định của Keycloak cần lọc bỏ
-        List<String> defaultSystemRoles = List.of(
-                "offline_access",
-                "uma_authorization",
-                "default-roles-monitor-realm"
-        );
-
         return getRealmResource().roles().list().stream()
-                .filter(role -> !defaultSystemRoles.contains(role.getName()))
+                // Chỉ lấy các Role do bạn định nghĩa bắt đầu bằng tiền tố "ROLE_"
+                .filter(role -> role.getName() != null && role.getName().startsWith("ROLE_"))
                 .map(role -> com.monitor.backend.model.dto.RoleResponse.builder()
                         .name(role.getName())
                         .description(role.getDescription())
