@@ -42,6 +42,7 @@ frontend/monitor-frontend/.pnp.js
 # Backend (Spring Boot) - monitor-backend
 backend/monitor-backend/target/
 backend/monitor-backend/build/
+backend/monitor-backend/tools/jdk-21/
 backend/monitor-backend/HELP.md
 
 # GIỮ LẠI MAVEN WRAPPER (Không ignore các file này)
