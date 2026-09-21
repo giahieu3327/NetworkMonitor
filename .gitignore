@@ -36,6 +36,7 @@ docker/*.log
 frontend/monitor-frontend/node_modules/
 frontend/monitor-frontend/build/
 frontend/monitor-frontend/coverage/
+frontend/monitor-frontend/tools/node/
 frontend/monitor-frontend/.pnp
 frontend/monitor-frontend/.pnp.js
 
