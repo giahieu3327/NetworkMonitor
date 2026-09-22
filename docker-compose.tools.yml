@@ -6,10 +6,10 @@ services:
     container_name: monitor-pgadmin
     restart: always
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@monitor.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-Admin@123}
     ports:
-      - "8081:80"
+      - "${PGADMIN_PORT:-8081}:80"
     networks:
       - monitor-net
 
@@ -18,7 +18,19 @@ services:
     container_name: monitor-redis-insight
     restart: always
     ports:
-      - "5540:5540"
+      - "${REDIS_INSIGHT_PORT:-5540}:5540"
+    networks:
+      - monitor-net
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: monitor-kafka-ui
+    restart: always
+    ports:
+      - "${KAFKA_UI_PORT:-8082}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local-kraft-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
     networks:
       - monitor-net
 

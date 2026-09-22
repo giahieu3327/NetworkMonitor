@@ -40,13 +40,26 @@ frontend/monitor-frontend/tools/node/
 frontend/monitor-frontend/.pnp
 frontend/monitor-frontend/.pnp.js
 
-# Backend (Spring Boot) - monitor-backend
-backend/monitor-backend/target/
-backend/monitor-backend/build/
-backend/monitor-backend/tools/jdk-21/
-backend/monitor-backend/HELP.md
+# Backend (Spring Boot) - portal_service
+backend/portal_service/target/
+backend/portal_service/build/
+backend/portal_service/tools/jdk-21/
+backend/portal_service/HELP.md
+backend/portal_service/.env
 
 # GIỮ LẠI MAVEN WRAPPER (Không ignore các file này)
-!backend/monitor-backend/.mvn/
-!backend/monitor-backend/mvnw
-!backend/monitor-backend/mvnw.cmd
+!backend/portal_service/.mvn/
+!backend/portal_service/mvnw
+!backend/portal_service/mvnw.cmd
+
+# Backend (Spring Boot) - monitor_service
+backend/monitor_service/target/
+backend/monitor_service/build/
+backend/monitor_service/tools/jdk-21/
+backend/monitor_service/HELP.md
+backend/monitor_service/.env
+
+# GIỮ LẠI MAVEN WRAPPER (Không ignore các file này)
+!backend/monitor_service/.mvn/
+!backend/monitor_service/mvnw
+!backend/monitor_service/mvnw.cmd
