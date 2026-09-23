@@ -35,7 +35,7 @@
 		<jasperreports.version>6.21.3</jasperreports.version>
 		<itext.version>2.1.7</itext.version>
 		<poi.version>5.2.5</poi.version>
-		<dotenv.version>3.1.0</dotenv.version>
+		<dotenv.version>5.2.2</dotenv.version>
 	</properties>
 
 	<dependencies>
@@ -172,7 +172,7 @@
 
 		<dependency>
 			<groupId>io.github.cdimascio</groupId>
-			<artifactId>dotenv-java</artifactId>
+			<artifactId>java-dotenv</artifactId>
 			<version>${dotenv.version}</version>
 		</dependency>
 
