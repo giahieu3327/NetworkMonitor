@@ -37,4 +37,4 @@ services:
 networks:
   monitor-net:
     external: true
-    name: monitor_monitor-net
+    name: monitor-net

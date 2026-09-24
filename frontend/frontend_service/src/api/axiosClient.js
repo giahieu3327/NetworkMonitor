@@ -1,9 +1,10 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://192.168.1.241:5000/api/v1';
+const BACKEND_URL = 'http://' + (process.env.BACKEND_HOST || 'localhost') + ':' + (process.env.BACKEND_PORT || '5000');
+const API_BACKEND_URL = `${BACKEND_URL}/api/v1`;
 
 export const axiosClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_BACKEND_URL,
   headers: {
     'Content-Type': 'application/json',
   },
