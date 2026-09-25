@@ -1,0 +1,282 @@
+services:
+
+  # ============================================================
+  # POSTGRESQL
+  # ============================================================
+
+  postgres:
+    image: postgres:${POSTGRES_VERSION}
+    container_name: monitor-postgres
+    restart: always
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB_MONITOR}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "${BIND_IP}:${POSTGRES_PORT}:5432"
+
+    volumes:
+      # PostgreSQL 18
+      - postgres_data:/var/lib/postgresql
+
+      # Initialization script
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB_MONITOR}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    networks:
+      - monitor-net
+
+
+  # ============================================================
+  # REDIS
+  # ============================================================
+
+  redis:
+    image: redis:${REDIS_VERSION}
+    container_name: monitor-redis
+    restart: always
+
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+
+    ports:
+      - "${BIND_IP}:${REDIS_PORT}:6379"
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "--no-auth-warning",
+          "-a",
+          "${REDIS_PASSWORD}",
+          "ping"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    networks:
+      - monitor-net
+
+
+  # ============================================================
+  # KEYCLOAK
+  # ============================================================
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION}
+    container_name: monitor-keycloak
+    restart: always
+
+    command:
+      - start-dev
+      - --import-realm
+
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB_KEYCLOAK}
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+    volumes:
+      - ./config/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+
+    ports:
+      - "${BIND_IP}:${KEYCLOAK_PORT}:8080"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - monitor-net
+
+
+  # ============================================================
+  # KAFKA
+  # ============================================================
+
+  kafka:
+    image: apache/kafka:${KAFKA_VERSION}
+    container_name: monitor-kafka
+    restart: always
+
+    ports:
+      - "${BIND_IP}:${KAFKA_PORT}:9092"
+
+    environment:
+
+      # --------------------------------------------------------
+      # KRaft
+      # --------------------------------------------------------
+
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+
+      # --------------------------------------------------------
+      # Listeners
+      # --------------------------------------------------------
+
+      KAFKA_LISTENERS: "PLAINTEXT://:29092,CONTROLLER://:29093,PLAINTEXT_HOST://:9092"
+
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://${EXTERNAL_KAFKA_HOST}:${KAFKA_PORT}"
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      # --------------------------------------------------------
+      # Single Node
+      # --------------------------------------------------------
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      # --------------------------------------------------------
+      # Storage
+      # --------------------------------------------------------
+
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+
+      # --------------------------------------------------------
+      # KRaft Cluster ID
+      # --------------------------------------------------------
+
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+    networks:
+      - monitor-net
+
+
+  # ============================================================
+  # STALWART MAIL SERVER
+  # ============================================================
+
+  stalwart:
+    image: stalwartlabs/stalwart:${STALWART_VERSION}
+    container_name: monitor-stalwart
+    restart: unless-stopped
+
+    environment:
+      STALWART_PUBLIC_URL: ${STALWART_PUBLIC_URL}
+
+    ports:
+      # Web Admin / HTTP
+      - "${BIND_IP}:${STALWART_HTTP_PORT}:8080"
+
+      # HTTPS
+      - "${BIND_IP}:${STALWART_HTTPS_PORT}:443"
+
+      # SMTP
+      - "${BIND_IP}:${STALWART_SMTP_PORT}:25"
+
+      # Submission
+      - "${BIND_IP}:${STALWART_SUBMISSION_PORT}:587"
+
+      # SMTPS
+      - "${BIND_IP}:${STALWART_SMTPS_PORT}:465"
+
+      # IMAP
+      - "${BIND_IP}:${STALWART_IMAP_PORT}:143"
+
+      # IMAPS
+      - "${BIND_IP}:${STALWART_IMAPS_PORT}:993"
+
+      # POP3
+      - "${BIND_IP}:${STALWART_POP3_PORT}:110"
+
+      # POP3S
+      - "${BIND_IP}:${STALWART_POP3S_PORT}:995"
+
+      # ManageSieve
+      - "${BIND_IP}:${STALWART_SIEVE_PORT}:4190"
+
+    volumes:
+      - stalwart_etc:/etc/stalwart
+      - stalwart_data:/var/lib/stalwart
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - monitor-net
+
+
+  # ============================================================
+  # SNAPPYMAIL WEBMAIL
+  # ============================================================
+
+  snappymail:
+    image: djmaze/snappymail:${SNAPPYMAIL_VERSION}
+    container_name: monitor-snappymail
+    restart: unless-stopped
+
+    ports:
+      - "${BIND_IP}:${SNAPPYMAIL_PORT}:8888"
+
+    volumes:
+      - snappymail_data:/var/lib/snappymail
+
+    depends_on:
+      - stalwart
+
+    networks:
+      - monitor-net
+
+
+# ============================================================
+# NETWORK
+# ============================================================
+
+networks:
+  monitor-net:
+    driver: bridge
+    name: ${NETWORK_NAME}
+
+
+# ============================================================
+# VOLUMES
+# ============================================================
+
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:
+  stalwart_etc:
+  stalwart_data:
+  snappymail_data:

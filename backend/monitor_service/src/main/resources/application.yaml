@@ -1,0 +1,58 @@
+server:
+  port: ${MONITOR_SERVER_PORT:5001}
+
+spring:
+  application:
+    name: monitor_service
+
+  # 1. Database Local SQLite (Dùng cho Outbox Pattern & Cache thiết bị)
+  datasource:
+    url: jdbc:sqlite:${SQLITE_DB_PATH:monitor_local.db}
+    driver-class-name: org.sqlite.JDBC
+
+  # 2. JPA / Hibernate Dialect cho SQLite
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  # 3. Kafka Config (Giao tiếp 2 chiều với portal_service)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: monitor-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+# 4. Actuator Health Check
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+# 5. Cấu hình thu thập SNMP & Syslog Listener
+monitoring:
+  snmp:
+    timeout: ${SNMP_TIMEOUT:1500}
+    retries: ${SNMP_RETRIES:2}
+  syslog:
+    port: ${SYSLOG_PORT:5140}
+    protocol: ${SYSLOG_PROTOCOL:udp}
+
+# 6. Logging
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: DEBUG
+    com.network_monitor.monitor_service: DEBUG
