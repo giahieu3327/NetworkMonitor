@@ -1,182 +1,282 @@
-version: '3.8'
-
 services:
-  mailu-front:
-    image: ghcr.io/mailu/nginx:2024.06
-    container_name: monitor-mailu-front
-    restart: always
-    environment:
-      - HTTP_PORT=80
-      - HTTPS_PORT=443
-      - ADMIN_PORT=8080
-      - WEBMAIL_PORT=8080
-      - WEBROOT=/
-      - TLS_FLAVOR=notls
-      - HOSTNAMES=${MAILU_HOSTNAME:-mail.monitor.com}
-    ports:
-      - "${MAILU_HTTP_PORT:-8025}:80"
-      - "${MAILU_SMTP_PORT:-25}:25"
-      - "${MAILU_SUBMISSION_PORT:-587}:587"
-      - "${MAILU_IMAP_PORT:-143}:143"
-    volumes:
-      - mailu_certs:/certs
-    networks:
-      - monitor-net
 
-  mailu-admin:
-    image: ghcr.io/mailu/admin:2024.06
-    container_name: monitor-mailu-admin
-    restart: always
-    environment:
-      - SECRET_KEY=${MAILU_SECRET_KEY:-ChangeMeToAVeryLongAndSecretKey123!}
-      - DOMAIN=${MAILU_DOMAIN:-monitor.com}
-      - HOSTNAMES=${MAILU_HOSTNAME:-mail.monitor.com}
-      - POSTMASTER=admin
-      - TLS_FLAVOR=notls
-      - ADMIN_ACCOUNT_PWD=${MAILU_ADMIN_PWD:-Admin@123}
-      - BIND_ADDRESS4=0.0.0.0
-      # Chuyển sang PostgreSQL
-      - DB_SUITE=postgres
-      - DB_USER=${POSTGRES_USER:-postgres}
-      - DB_PW=${POSTGRES_PASSWORD:-Admin@123}
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=${POSTGRES_DB_MAILU:-mailu_db}
-      - INITIAL_ADMIN_ACCOUNT=admin
-      - INITIAL_ADMIN_DOMAIN=${MAILU_DOMAIN:-monitor.com}
-      - INITIAL_ADMIN_PW=${MAILU_ADMIN_PWD:-Admin@123}
-    depends_on:
-      - postgres
-    volumes:
-      - mailu_data:/data
-    networks:
-      - monitor-net
-
-  mailu-imap:
-    image: ghcr.io/mailu/dovecot:2024.06
-    container_name: monitor-mailu-imap
-    restart: always
-    environment:
-      - DOMAIN=${MAILU_DOMAIN:-monitor.com}
-      - HOSTNAMES=${MAILU_HOSTNAME:-mail.monitor.com}
-      - POSTMASTER=admin
-      - TLS_FLAVOR=notls
-    volumes:
-      - mailu_mail:/mail
-    networks:
-      - monitor-net
-
-  mailu-smtp:
-    image: ghcr.io/mailu/postfix:2024.06
-    container_name: monitor-mailu-smtp
-    restart: always
-    environment:
-      - DOMAIN=${MAILU_DOMAIN:-monitor.com}
-      - HOSTNAMES=${MAILU_HOSTNAME:-mail.monitor.com}
-      - POSTMASTER=admin
-      - TLS_FLAVOR=notls
-    networks:
-      - monitor-net
-
-  mailu-webmail:
-    image: ghcr.io/mailu/snappymail:2024.06
-    container_name: monitor-mailu-webmail
-    restart: always
-    environment:
-      - WEBMAIL=snappymail
-    volumes:
-      - mailu_webmail:/data
-    networks:
-      - monitor-net
+  # ============================================================
+  # POSTGRESQL
+  # ============================================================
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:${POSTGRES_VERSION}
     container_name: monitor-postgres
     restart: always
+
     environment:
-      POSTGRES_DB: ${POSTGRES_DB_MONITOR:-monitor_db}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Admin@123}
+      POSTGRES_DB: ${POSTGRES_DB_MONITOR}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${BIND_IP}:${POSTGRES_PORT}:5432"
+
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # PostgreSQL 18
+      - postgres_data:/var/lib/postgresql
+
+      # Initialization script
+      - ./config/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB_MONITOR}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
     networks:
       - monitor-net
+
+
+  # ============================================================
+  # REDIS
+  # ============================================================
 
   redis:
-    image: redis:7-alpine
+    image: redis:${REDIS_VERSION}
     container_name: monitor-redis
     restart: always
-    command: redis-server --requirepass ${REDIS_PASSWORD:-Admin@123}
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-Admin@123}
+
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${BIND_IP}:${REDIS_PORT}:6379"
+
     volumes:
       - redis_data:/data
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "--no-auth-warning",
+          "-a",
+          "${REDIS_PASSWORD}",
+          "ping"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
     networks:
       - monitor-net
+
+
+  # ============================================================
+  # KEYCLOAK
+  # ============================================================
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0.0
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION}
     container_name: monitor-keycloak
-    command: start-dev --import-realm
     restart: always
+
+    command:
+      - start-dev
+      - --import-realm
+
     environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-Admin@123}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB_KEYCLOAK:-keycloak_db}
-      KC_DB_USERNAME: ${POSTGRES_USER:-postgres}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-Admin@123}
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB_KEYCLOAK}
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+
     volumes:
-      - ./config/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+      - ./config/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+
     ports:
-      - "${KEYCLOAK_PORT:-8080}:8080"
+      - "${BIND_IP}:${KEYCLOAK_PORT}:8080"
+
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+
     networks:
       - monitor-net
 
+
+  # ============================================================
+  # KAFKA
+  # ============================================================
+
   kafka:
-    image: apache/kafka:3.7.0
+    image: apache/kafka:${KAFKA_VERSION}
     container_name: monitor-kafka
     restart: always
-    user: root
+
     ports:
-      - "${KAFKA_PORT:-9092}:9092"
+      - "${BIND_IP}:${KAFKA_PORT}:9092"
+
     environment:
+
+      # --------------------------------------------------------
+      # KRaft
+      # --------------------------------------------------------
+
       KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: 'broker,controller'
-      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
-      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092'
-      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://${KAFKA_HOST:-localhost}:${KAFKA_PORT:-9092}'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
-      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
-      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_PROCESS_ROLES: "broker,controller"
+
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+
+      # --------------------------------------------------------
+      # Listeners
+      # --------------------------------------------------------
+
+      KAFKA_LISTENERS: "PLAINTEXT://:29092,CONTROLLER://:29093,PLAINTEXT_HOST://:9092"
+
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://${EXTERNAL_KAFKA_HOST}:${KAFKA_PORT}"
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      # --------------------------------------------------------
+      # Single Node
+      # --------------------------------------------------------
+
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
-      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+      # --------------------------------------------------------
+      # Storage
+      # --------------------------------------------------------
+
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+
+      # --------------------------------------------------------
+      # KRaft Cluster ID
+      # --------------------------------------------------------
+
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+
     volumes:
       - kafka_data:/var/lib/kafka/data
+
     networks:
       - monitor-net
+
+
+  # ============================================================
+  # STALWART MAIL SERVER
+  # ============================================================
+
+  stalwart:
+    image: stalwartlabs/stalwart:${STALWART_VERSION}
+    container_name: monitor-stalwart
+    restart: unless-stopped
+
+    environment:
+      STALWART_PUBLIC_URL: ${STALWART_PUBLIC_URL}
+
+    ports:
+      # Web Admin / HTTP
+      - "${BIND_IP}:${STALWART_HTTP_PORT}:8080"
+
+      # HTTPS
+      - "${BIND_IP}:${STALWART_HTTPS_PORT}:443"
+
+      # SMTP
+      - "${BIND_IP}:${STALWART_SMTP_PORT}:25"
+
+      # Submission
+      - "${BIND_IP}:${STALWART_SUBMISSION_PORT}:587"
+
+      # SMTPS
+      - "${BIND_IP}:${STALWART_SMTPS_PORT}:465"
+
+      # IMAP
+      - "${BIND_IP}:${STALWART_IMAP_PORT}:143"
+
+      # IMAPS
+      - "${BIND_IP}:${STALWART_IMAPS_PORT}:993"
+
+      # POP3
+      - "${BIND_IP}:${STALWART_POP3_PORT}:110"
+
+      # POP3S
+      - "${BIND_IP}:${STALWART_POP3S_PORT}:995"
+
+      # ManageSieve
+      - "${BIND_IP}:${STALWART_SIEVE_PORT}:4190"
+
+    volumes:
+      - stalwart_etc:/etc/stalwart
+      - stalwart_data:/var/lib/stalwart
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - monitor-net
+
+
+  # ============================================================
+  # SNAPPYMAIL WEBMAIL
+  # ============================================================
+
+  snappymail:
+    image: djmaze/snappymail:${SNAPPYMAIL_VERSION}
+    container_name: monitor-snappymail
+    restart: unless-stopped
+
+    ports:
+      - "${BIND_IP}:${SNAPPYMAIL_PORT}:8888"
+
+    volumes:
+      - snappymail_data:/var/lib/snappymail
+
+    depends_on:
+      - stalwart
+
+    networks:
+      - monitor-net
+
+
+# ============================================================
+# NETWORK
+# ============================================================
 
 networks:
   monitor-net:
     driver: bridge
-    name: monitor-net
+    name: ${NETWORK_NAME}
+
+
+# ============================================================
+# VOLUMES
+# ============================================================
 
 volumes:
   postgres_data:
   redis_data:
   kafka_data:
-  mailu_data:
-  mailu_mail:
-  mailu_webmail:
-  mailu_certs:
+  stalwart_etc:
+  stalwart_data:
+  snappymail_data:

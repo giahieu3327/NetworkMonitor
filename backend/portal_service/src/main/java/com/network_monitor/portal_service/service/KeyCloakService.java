@@ -29,22 +29,22 @@ import java.util.Optional;
 @Slf4j
 public class KeyCloakService {
 
-    @Value("${keycloak.server-url:http://localhost:8080}")
+    @Value("${keycloak.server-url}")
     private String serverUrl;
 
-    @Value("${keycloak.realm:monitor-realm}")
+    @Value("${keycloak.realm}")
     private String realm;
 
-    @Value("${keycloak.admin.username:admin}")
+    @Value("${keycloak.admin.username}")
     private String adminUsername;
 
-    @Value("${keycloak.admin.password:admin}")
+    @Value("${keycloak.admin.password}")
     private String adminPassword;
 
-    @Value("${keycloak.admin.client-id:admin-cli}")
+    @Value("${keycloak.admin.client-id}")
     private String adminClientId;
 
-    @Value("${keycloak.user-client-id:monitor-frontend}")
+    @Value("${keycloak.user-client-id}")
     private String userClientId;
 
     public Keycloak getKeycloakInstance() {

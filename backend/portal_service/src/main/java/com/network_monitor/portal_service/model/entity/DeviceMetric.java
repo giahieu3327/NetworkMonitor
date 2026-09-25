@@ -2,9 +2,11 @@ package com.network_monitor.portal_service.model.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.util.Map;
 
 @Entity
 @Table(name = "device_metrics")
@@ -19,28 +21,11 @@ public class DeviceMetric {
     @JoinColumn(name = "device_id", nullable = false)
     private Device device;
 
-    @Column(name = "cpu_usage_pct")
-    private Double cpuUsagePct;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb", nullable = false)
+    private Map<String, Object> metrics;
 
-    @Column(name = "ram_usage_pct")
-    private Double ramUsagePct;
-
-    @Column(name = "temperature_c")
-    private Double temperatureC;
-
-    @Column(name = "active_sessions")
-    private Integer activeSessions;
-
-    @Column(name = "uptime_seconds")
-    private Long uptimeSeconds;
-
-    @Column(name = "latency_ms")
-    private Double latencyMs;
-
-    @Column(name = "packet_loss_pct")
-    private Double packetLossPct;
-
-    @CreationTimestamp
-    @Column(name = "timestamp", nullable = false, updatable = false)
-    private OffsetDateTime timestamp;
+    @Builder.Default
+    @Column(nullable = false)
+    private OffsetDateTime timestamp = OffsetDateTime.now();
 }

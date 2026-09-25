@@ -1,6 +1,6 @@
 package com.network_monitor.portal_service.model.entity;
 
-import com.network_monitor.portal_service.model.enums.ChannelType;
+import com.network_monitor.portal_service.model.enums.NotificationChannelType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -22,9 +22,9 @@ public class NotificationConfig {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "channel_type", length = 20, nullable = false)
-    private ChannelType channelType;
+    private NotificationChannelType channelType;
 
-    @Column(name = "bot_token", length = 255)
+    @Column(name = "bot_token")
     private String botToken;
 
     @Column(name = "chat_id", length = 100)
@@ -33,8 +33,9 @@ public class NotificationConfig {
     @Column(name = "smtp_host", length = 100)
     private String smtpHost;
 
+    @Builder.Default
     @Column(name = "smtp_port")
-    private Integer smtpPort;
+    private Integer smtpPort = 587;
 
     @Column(name = "smtp_username", length = 100)
     private String smtpUsername;

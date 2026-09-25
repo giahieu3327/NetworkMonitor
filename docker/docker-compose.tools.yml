@@ -1,40 +1,66 @@
-version: '3.8'
-
 services:
+
+  # ============================================================
+  # PGADMIN
+  # ============================================================
+
   pgadmin:
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:${PGADMIN_VERSION}
     container_name: monitor-pgadmin
     restart: always
+
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@monitor.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-Admin@123}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+
     ports:
-      - "${PGADMIN_PORT:-8081}:80"
+      - "${BIND_IP}:${PGADMIN_PORT}:80"
+
     networks:
       - monitor-net
+
+
+  # ============================================================
+  # REDIS INSIGHT
+  # ============================================================
 
   redis-insight:
-    image: redis/redisinsight:latest
+    image: redis/redisinsight:${REDIS_INSIGHT_VERSION}
     container_name: monitor-redis-insight
     restart: always
+
     ports:
-      - "${REDIS_INSIGHT_PORT:-5540}:5540"
+      - "${BIND_IP}:${REDIS_INSIGHT_PORT}:5540"
+
     networks:
       - monitor-net
 
+
+  # ============================================================
+  # KAFKA UI
+  # ============================================================
+
   kafka-ui:
-    image: provectuslabs/kafka-ui:latest
+    image: provectuslabs/kafka-ui:${KAFKA_UI_VERSION}
     container_name: monitor-kafka-ui
     restart: always
+
     ports:
-      - "${KAFKA_UI_PORT:-8082}:8080"
+      - "${BIND_IP}:${KAFKA_UI_PORT}:8080"
+
     environment:
-      KAFKA_CLUSTERS_0_NAME: local-kraft-cluster
+      KAFKA_CLUSTERS_0_NAME: ${KAFKA_CLUSTER_NAME}
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
     networks:
       - monitor-net
+
+
+# ============================================================
+# NETWORK
+# ============================================================
 
 networks:
   monitor-net:
     external: true
-    name: monitor-net
+    name: ${NETWORK_NAME}

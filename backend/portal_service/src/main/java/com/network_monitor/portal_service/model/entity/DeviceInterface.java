@@ -4,6 +4,7 @@ import com.network_monitor.portal_service.model.enums.AdminStatus;
 import com.network_monitor.portal_service.model.enums.OperStatus;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.OffsetDateTime;
@@ -34,18 +35,21 @@ public class DeviceInterface {
     @Column(name = "speed_bps")
     private Long speedBps = 1000000000L;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "admin_status", length = 10)
-    @Builder.Default
     private AdminStatus adminStatus = AdminStatus.UP;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "oper_status", length = 10)
-    @Builder.Default
     private OperStatus operStatus = OperStatus.UP;
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private OffsetDateTime createdAt;
 
     @UpdateTimestamp
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 }
-

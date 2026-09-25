@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const BACKEND_URL = 'http://' + (process.env.BACKEND_HOST || 'localhost') + ':' + (process.env.BACKEND_PORT || '5000');
+const BACKEND_HOST = process.env.REACT_APP_BACKEND_HOST || 'localhost';
+const BACKEND_PORT = process.env.REACT_APP_BACKEND_PORT || '5000';
+
+const BACKEND_URL = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
 const API_BACKEND_URL = `${BACKEND_URL}/api/v1`;
 
 export const axiosClient = axios.create({
@@ -31,7 +34,7 @@ axiosClient.interceptors.response.use(
         const refreshToken = localStorage.getItem('refresh_token');
         if (!refreshToken) throw new Error('No refresh token');
 
-        const res = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
+        const res = await axios.post(`${API_BACKEND_URL}/auth/refresh`, { refreshToken });
         const { access_token, refresh_token: newRefresh } = res.data;
 
         localStorage.setItem('access_token', access_token);

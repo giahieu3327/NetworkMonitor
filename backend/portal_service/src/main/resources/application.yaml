@@ -77,17 +77,20 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
 
-  # 9. Mail Service Config (Mailpit)
+  # 9. Mail Service Config (Stalwart Mail Server)
   mail:
-    host: ${MAIL_HOST:localhost}
-    port: ${MAIL_PORT:1025}
+    host: ${STALWART_HOST:localhost}
+    port: ${STALWART_SUBMISSION_PORT:587}
+    username: ${STALWART_MAIL_USER:admin@monitor.com}
+    password: ${STALWART_MAIL_PASSWORD:Admin@123}
     protocol: smtp
     properties:
       mail:
         smtp:
-          auth: false
+          auth: true
           starttls:
-            enable: false
+            enable: true
+            required: false
 
 
 # 10. Camunda BPMN Engine Config

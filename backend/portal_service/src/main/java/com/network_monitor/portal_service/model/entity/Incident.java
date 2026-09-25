@@ -26,6 +26,14 @@ public class Incident {
     @JoinColumn(name = "rule_id")
     private ThresholdRule thresholdRule;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "syslog_rule_id")
+    private SyslogRule syslogRule;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "syslog_id")
+    private Syslog syslog;
+
     @Enumerated(EnumType.STRING)
     @Column(length = 20, nullable = false)
     private IncidentSeverity severity;
@@ -39,9 +47,9 @@ public class Incident {
     @Column(name = "camunda_process_id", length = 64)
     private String camundaProcessId;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(length = 30)
-    @Builder.Default
     private IncidentStatus status = IncidentStatus.OPEN;
 
     @ManyToOne(fetch = FetchType.LAZY)

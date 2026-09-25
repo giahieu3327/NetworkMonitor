@@ -2,7 +2,6 @@ package com.network_monitor.portal_service.model.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.OffsetDateTime;
 
@@ -31,7 +30,7 @@ public class AuditLog {
     @Column(columnDefinition = "TEXT")
     private String details;
 
-    @CreationTimestamp
-    @Column(name = "timestamp", nullable = false, updatable = false)
-    private OffsetDateTime timestamp;
+    @Builder.Default
+    @Column(nullable = false)
+    private OffsetDateTime timestamp = OffsetDateTime.now();
 }

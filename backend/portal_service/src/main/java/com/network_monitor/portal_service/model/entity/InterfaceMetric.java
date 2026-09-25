@@ -2,9 +2,11 @@ package com.network_monitor.portal_service.model.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.util.Map;
 
 @Entity
 @Table(name = "interface_metrics")
@@ -19,39 +21,11 @@ public class InterfaceMetric {
     @JoinColumn(name = "interface_id", nullable = false)
     private DeviceInterface deviceInterface;
 
-    @Builder.Default
-    @Column(name = "bytes_in_bps")
-    private Long bytesInBps = 0L;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb", nullable = false)
+    private Map<String, Object> metrics;
 
     @Builder.Default
-    @Column(name = "bytes_out_bps")
-    private Long bytesOutBps = 0L;
-
-    @Builder.Default
-    @Column(name = "packets_in")
-    private Long packetsIn = 0L;
-
-    @Builder.Default
-    @Column(name = "packets_out")
-    private Long packetsOut = 0L;
-
-    @Builder.Default
-    @Column(name = "errors_in")
-    private Integer errorsIn = 0;
-
-    @Builder.Default
-    @Column(name = "errors_out")
-    private Integer errorsOut = 0;
-
-    @Builder.Default
-    @Column(name = "discards_in")
-    private Integer discardsIn = 0;
-
-    @Builder.Default
-    @Column(name = "discards_out")
-    private Integer discardsOut = 0;
-
-    @CreationTimestamp
-    @Column(name = "timestamp", nullable = false, updatable = false)
-    private OffsetDateTime timestamp;
+    @Column(nullable = false)
+    private OffsetDateTime timestamp = OffsetDateTime.now();
 }

@@ -19,22 +19,22 @@ public class InitAdmin implements CommandLineRunner {
     private final KeyCloakService keyCloakService;
     private final UserService userService;
 
-    @Value("${app.admin.username:admin}")
+    @Value("${app.admin.username}")
     private String adminUsername;
 
-    @Value("${app.admin.email:admin@monitor.com}")
+    @Value("${app.admin.email}")
     private String adminEmail;
 
-    @Value("${app.admin.password:Admin@123}")
+    @Value("${app.admin.password}")
     private String adminPassword;
 
-    @Value("${app.admin.full-name:System Administrator}")
+    @Value("${app.admin.full-name}")
     private String adminFullName;
 
-    @Value("${app.admin.phone:0900000000}")
+    @Value("${app.admin.phone}")
     private String adminPhone;
 
-    @Value("${app.admin.role:ROLE_SUPER_ADMIN}")
+    @Value("${app.admin.role}")
     private String adminRole;
 
     @Override

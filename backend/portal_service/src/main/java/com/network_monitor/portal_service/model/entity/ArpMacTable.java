@@ -2,7 +2,6 @@ package com.network_monitor.portal_service.model.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.OffsetDateTime;
@@ -32,9 +31,9 @@ public class ArpMacTable {
     @Column(name = "vlan_id")
     private Integer vlanId;
 
-    @CreationTimestamp
+    @Builder.Default
     @Column(name = "last_seen")
-    private OffsetDateTime lastSeen;
+    private OffsetDateTime lastSeen = OffsetDateTime.now();
 
     @UpdateTimestamp
     @Column(name = "updated_at")

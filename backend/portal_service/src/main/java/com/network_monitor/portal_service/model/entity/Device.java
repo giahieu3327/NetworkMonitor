@@ -8,6 +8,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 @Entity
 @Table(name = "devices")
@@ -31,9 +32,12 @@ public class Device {
     @Column(length = 100)
     private String model;
 
+    @Column(name = "firmware_version", length = 50)
+    private String firmwareVersion;
+
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
-    @Builder.Default
     private DeviceStatus status = DeviceStatus.UP;
 
     @CreationTimestamp
@@ -43,5 +47,10 @@ public class Device {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
-}
 
+    @OneToMany(mappedBy = "device", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<DeviceCredential> credentials;
+
+    @OneToMany(mappedBy = "device", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<DeviceInterface> interfaces;
+}

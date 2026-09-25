@@ -22,12 +22,12 @@ public class TopologyMap {
     private String mapName;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "nodes_data", nullable = false, columnDefinition = "jsonb")
-    private String nodesData;
+    @Column(name = "nodes_data", columnDefinition = "jsonb", nullable = false)
+    private Object nodesData;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "edges_data", nullable = false, columnDefinition = "jsonb")
-    private String edgesData;
+    @Column(name = "edges_data", columnDefinition = "jsonb", nullable = false)
+    private Object edgesData;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "updated_by")
