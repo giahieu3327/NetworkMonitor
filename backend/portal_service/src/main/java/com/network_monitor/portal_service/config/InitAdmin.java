@@ -1,7 +1,11 @@
 package com.network_monitor.portal_service.config;
 
-
+import com.network_monitor.portal_service.model.dto.request.UserInsertRequest;
+import com.network_monitor.portal_service.model.dto.response.ApiResponse;
+import com.network_monitor.portal_service.model.entity.User;
+import com.network_monitor.portal_service.repository.UserRepository;
 import com.network_monitor.portal_service.service.KeyCloakService;
+import com.network_monitor.portal_service.service.MailService;
 import com.network_monitor.portal_service.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,23 +22,25 @@ public class InitAdmin implements CommandLineRunner {
 
     private final KeyCloakService keyCloakService;
     private final UserService userService;
+    private final UserRepository userRepository;
+    private final MailService mailService;
 
-    @Value("${app.admin.username}")
+    @Value("${app.admin.username:admin}")
     private String adminUsername;
 
-    @Value("${app.admin.email}")
+    @Value("${app.admin.email:admin@monitor.com}")
     private String adminEmail;
 
-    @Value("${app.admin.password}")
+    @Value("${app.admin.password:Admin@123}")
     private String adminPassword;
 
-    @Value("${app.admin.full-name}")
+    @Value("${app.admin.full-name:Super Administrator}")
     private String adminFullName;
 
-    @Value("${app.admin.phone}")
+    @Value("${app.admin.phone:0909090909}")
     private String adminPhone;
 
-    @Value("${app.admin.role}")
+    @Value("${app.admin.role:ROLE_SUPER_ADMIN}")
     private String adminRole;
 
     @Override
@@ -55,33 +61,47 @@ public class InitAdmin implements CommandLineRunner {
             return;
         }
 
+        // Tạo Mailbox Stalwart nếu chưa tồn tại
+        mailService.createMailAccount(adminUsername, adminPassword, adminFullName);
+
         String keycloakUserId = syncKeycloakAdmin(keycloakExists);
         syncPostgresAdmin(postgresExists, keycloakUserId);
     }
 
     private boolean checkKeycloakAdminExists() {
-        return keyCloakService.existsByUsername(adminUsername);
+        ApiResponse<Boolean> response = keyCloakService.existsByUsername(adminUsername);
+        return response.isSuccess() && Boolean.TRUE.equals(response.getData());
     }
 
     private boolean checkPostgresAdminExists() {
-        return userService.existsByUsername(adminUsername);
+        return userRepository.findByUsername(adminUsername).isPresent();
     }
 
     private String syncKeycloakAdmin(boolean exists) {
         if (exists) {
             log.info("Tài khoản Admin đã có trên Keycloak. Lấy Keycloak ID...");
-            Optional<String> userIdOpt = keyCloakService.findUserIdByUsername(adminUsername);
-            return userIdOpt.orElseThrow(() -> new IllegalStateException("Không tìm thấy UUID Keycloak cho user " + adminUsername));
+            ApiResponse<String> idResponse = keyCloakService.findUserIdByUsername(adminUsername);
+            if (idResponse.isSuccess() && idResponse.getData() != null) {
+                return idResponse.getData();
+            }
+            throw new IllegalStateException("Không tìm thấy UUID Keycloak cho user " + adminUsername);
         }
 
         log.info("Tạo tài khoản Admin mới trên Keycloak...");
-        return keyCloakService.createAndConfigureUser(
+        ApiResponse<String> createResponse = keyCloakService.createAndConfigureUser(
                 adminUsername,
                 adminEmail,
                 adminFullName,
                 adminPassword,
-                adminRole
+                adminRole,
+                false
         );
+
+        if (createResponse.isSuccess() && createResponse.getData() != null) {
+            return createResponse.getData();
+        }
+
+        throw new IllegalStateException("Không thể khởi tạo Admin trên Keycloak: " + createResponse.getErrorDetails());
     }
 
     private void syncPostgresAdmin(boolean exists, String keycloakUserId) {
@@ -91,13 +111,18 @@ public class InitAdmin implements CommandLineRunner {
         }
 
         log.info("Tạo tài khoản Admin trong cơ sở dữ liệu Postgres với Keycloak UUID: {}", keycloakUserId);
-        userService.createLocalUser(
-                keycloakUserId,
-                adminUsername,
-                adminEmail,
-                adminFullName,
-                adminPhone
-        );
-        log.info("Tạo tài khoản Admin mặc định hoàn tất!");
+        
+        User adminUser = User.builder()
+                .id(keycloakUserId)
+                .username(adminUsername)
+                .email(adminEmail)
+                .fullName(adminFullName)
+                .phoneNumber(adminPhone)
+                .roleName(adminRole)
+                .isActive(true)
+                .build();
+
+        userRepository.save(adminUser);
+        log.info("Khởi tạo tài khoản Admin mặc định hoàn tất thành công!");
     }
 }

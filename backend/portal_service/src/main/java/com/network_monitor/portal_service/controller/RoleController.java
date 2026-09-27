@@ -1,6 +1,8 @@
 package com.network_monitor.portal_service.controller;
 
-import com.network_monitor.portal_service.model.dto.RoleResponse;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
+import com.network_monitor.portal_service.model.entity.*;
 import com.network_monitor.portal_service.service.RoleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

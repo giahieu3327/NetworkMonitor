@@ -1,4 +1,4 @@
-package com.network_monitor.portal_service.model.dto;
+package com.network_monitor.portal_service.model.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;

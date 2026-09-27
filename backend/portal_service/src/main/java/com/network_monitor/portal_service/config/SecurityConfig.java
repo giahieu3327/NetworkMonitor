@@ -19,10 +19,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Configuration
@@ -40,9 +37,9 @@ public class SecurityConfig {
                 // 1. Cho phép OPTIONS request cho CORS Pre-flight
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // 2. Public Auth endpoints & Swagger UI
+                // 2. Public Auth endpoints, Swagger UI, Health Check & Camunda Engine
                 .requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
-                .requestMatchers("/health/**").permitAll()
+                .requestMatchers("/health/**", "/actuator/**").permitAll()
                 .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/api-docs/**").permitAll()
                 .requestMatchers(
                     "/camunda/**", 
@@ -50,12 +47,7 @@ public class SecurityConfig {
                     "/engine-rest/**"
                 ).permitAll()
 
-                // 3. Admin-only endpoints
-                .requestMatchers("/api/v1/auth/register").hasAuthority("ROLE_SUPER_ADMIN")
-                .requestMatchers("/api/v1/roles").hasAuthority("ROLE_SUPER_ADMIN")
-                .requestMatchers("/api/v1/users/**").hasAuthority("ROLE_SUPER_ADMIN")
-
-                // 4. Mọi request khác (VD: /api/v1/auth/me, /api/v1/auth/change-password) yêu cầu phải đăng nhập
+                // 3. Mọi request còn lại yêu cầu phải đăng nhập + Phân quyền qua @PreAuthorize ở Controller
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2
@@ -69,7 +61,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(List.of("*"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
 
@@ -84,6 +76,10 @@ public class SecurityConfig {
         return jwtConverter;
     }
 
+    /**
+     * Converter trích xuất Roles từ Keycloak Realm Access trong JWT
+     * Tự động chuẩn hóa tiền tố 'ROLE_' nếu chưa có.
+     */
     private static class KeycloakGrantedAuthoritiesConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
         @Override
         public Collection<GrantedAuthority> convert(Jwt jwt) {
@@ -96,6 +92,7 @@ public class SecurityConfig {
             List<String> roles = (List<String>) realmAccess.get("roles");
 
             return roles.stream()
+                    .map(role -> role.startsWith("ROLE_") ? role : "ROLE_" + role)
                     .map(SimpleGrantedAuthority::new)
                     .collect(Collectors.toList());
         }

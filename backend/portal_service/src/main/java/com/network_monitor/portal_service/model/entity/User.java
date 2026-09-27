@@ -9,17 +9,21 @@ import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "users")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class User {
 
     @Id
-    @Column(length = 36)
-    private String id;
+    @Column(name = "id", length = 36, nullable = false)
+    private String id; // Keycloak UUID
 
-    @Column(length = 50, nullable = false, unique = true)
+    @Column(name = "username", length = 50, nullable = false, unique = true)
     private String username;
 
-    @Column(length = 100, nullable = false, unique = true)
+    @Column(name = "email", length = 100, nullable = false, unique = true)
     private String email;
 
     @Column(name = "full_name", length = 100, nullable = false)
@@ -28,8 +32,12 @@ public class User {
     @Column(name = "phone_number", length = 20)
     private String phoneNumber;
 
+    @Column(name = "role_name", length = 50)
     @Builder.Default
+    private String roleName = "ROLE_GUEST_VIEWER";
+
     @Column(name = "is_active")
+    @Builder.Default
     private Boolean isActive = true;
 
     @CreationTimestamp

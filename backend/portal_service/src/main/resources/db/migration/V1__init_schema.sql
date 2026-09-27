@@ -16,16 +16,16 @@
 
 -- 1.1. Lưu trữ thông tin tài khoản người dùng được đồng bộ từ Keycloak Profile
 CREATE TABLE users (
-    id VARCHAR(36) PRIMARY KEY, -- Subject Identifier (UUID) từ Keycloak
+    id VARCHAR(36) PRIMARY KEY, -- Keycloak Subject ID (UUID)
     username VARCHAR(50) NOT NULL UNIQUE, -- Tên đăng nhập
     email VARCHAR(100) NOT NULL UNIQUE, -- Địa chỉ email
     full_name VARCHAR(100) NOT NULL, -- Họ và tên đầy đủ
     phone_number VARCHAR(20), -- Số điện thoại liên hệ
-    is_active BOOLEAN DEFAULT TRUE, -- Trạng thái tài khoản (TRUE: Hoạt động, FALSE: Khóa mềm giữ lịch sử)
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, -- Thời điểm tạo tài khoản
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP  -- Thời điểm cập nhật thông tin gần nhất
+    role_name VARCHAR(50) DEFAULT 'ROLE_USER', -- Vai trò hệ thống (ROLE_USER, ROLE_ADMIN,...)
+    is_active BOOLEAN DEFAULT TRUE, -- Trạng thái tài khoản (TRUE: Hoạt động, FALSE: Khóa)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, -- Thời điểm tạo
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP  -- Thời điểm cập nhật
 );
-
 
 -- ------------------------------------------------------------
 -- NHÓM 2: QUẢN LÝ THIẾT BỊ, XÁC THỰC & CỔNG GIAO TIẾP

@@ -1,25 +1,25 @@
-package com.network_monitor.portal_service.model.dto;
+package com.network_monitor.portal_service.model.dto.response;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
-import java.util.List;
+import java.time.OffsetDateTime;
 
-@Getter
-@Setter
+@Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserProfileResponse {
+public class UserResponse {
 
     private String id;
     private String username;
     private String email;
     private String fullName;
     private String phoneNumber;
+    private String roleName;
     private Boolean isActive;
-    private List<String> roles;
+    private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;
 }

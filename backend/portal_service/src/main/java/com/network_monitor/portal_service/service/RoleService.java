@@ -1,6 +1,8 @@
 package com.network_monitor.portal_service.service;
 
-import com.network_monitor.portal_service.model.dto.RoleResponse;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
+import com.network_monitor.portal_service.model.entity.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
