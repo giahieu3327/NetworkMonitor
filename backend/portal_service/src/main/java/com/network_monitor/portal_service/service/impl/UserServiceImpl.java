@@ -9,7 +9,6 @@ import com.network_monitor.portal_service.model.dto.response.UserResponse;
 import com.network_monitor.portal_service.model.entity.User;
 import com.network_monitor.portal_service.repository.UserRepository;
 import com.network_monitor.portal_service.service.KeyCloakService;
-import com.network_monitor.portal_service.service.MailService;
 import com.network_monitor.portal_service.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,53 +30,89 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final UserMapper userMapper;
     private final KeyCloakService keyCloakService;
-    private final MailService mailService;
 
     @Override
     public ApiResponse<Void> insertUser(UserInsertRequest request) {
-        // BƯỚC 0: VALIDATE TRONG CSDL CỤC BỘ
+
         if (userRepository.findByUsername(request.getUsername()).isPresent()) {
-            return ApiResponse.error("Tạo người dùng thất bại", "Tên đăng nhập " + request.getUsername() + " đã tồn tại");
+
+            return ApiResponse.error(
+                    "Tạo người dùng thất bại",
+                    "Tên đăng nhập "
+                            + request.getUsername()
+                            + " đã tồn tại trong hệ thống"
+            );
         }
+
+
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
-            return ApiResponse.error("Tạo người dùng thất bại", "Email " + request.getEmail() + " đã tồn tại");
+
+            return ApiResponse.error(
+                    "Tạo người dùng thất bại",
+                    "Email "
+                            + request.getEmail()
+                            + " đã tồn tại trong hệ thống"
+            );
         }
+
+
+        // ============================================================
+        // KIỂM TRA PASSWORD + CONFIRM PASSWORD
+        // ============================================================
+
+        if (request.getConfirmPassword() == null
+                || request.getConfirmPassword().isBlank()) {
+
+            return ApiResponse.error(
+                    "Tạo người dùng thất bại",
+                    "Xác nhận mật khẩu không được để trống"
+            );
+        }
+
+
+        if (!request.getPassword()
+                .equals(request.getConfirmPassword())) {
+
+            return ApiResponse.error(
+                    "Tạo người dùng thất bại",
+                    "Mật khẩu và xác nhận mật khẩu không khớp"
+            );
+        }
+
 
         String createdKeycloakUserId = null;
-        boolean isMailCreated = false;
 
         try {
-            // BƯỚC 1: TẠO HỘP THƯ NỘI BỘ TRÊN STALWART MAIL SERVER
-            ApiResponse<Void> mailResult = mailService.createMailAccount(
-                    request.getUsername(),
-                    request.getPassword(),
-                    request.getFullName()
-            );
 
-            if (!mailResult.isSuccess()) {
-                return ApiResponse.error("Khởi tạo tài khoản thất bại", "Lỗi tạo mailbox Stalwart: " + mailResult.getErrorDetails());
-            }
-            isMailCreated = true;
+            String roleName =
+                    (request.getRoleName() != null
+                            && !request.getRoleName().isBlank())
+                            ? request.getRoleName()
+                            : "ROLE_GUEST_VIEWER";
 
-            // BƯỚC 2: TẠO VÀ CẤU HÌNH TÀI KHOẢN TRÊN KEYCLOAK (sendVerificationEmail = false)
-            String roleName = (request.getRoleName() != null && !request.getRoleName().isBlank()) 
-                    ? request.getRoleName() : "ROLE_USER";
 
-            ApiResponse<String> kcResult = keyCloakService.createAndConfigureUser(
-                    request.getUsername(),
-                    request.getEmail(),
-                    request.getFullName(),
-                    request.getPassword(),
-                    roleName,
-                    false
-            );
+            ApiResponse<String> kcResult =
+                    keyCloakService.createAndConfigureUser(
+                            request.getUsername(),
+                            request.getEmail(),
+                            request.getFullName(),
+                            request.getPassword(),
+                            roleName
+                    );
+
 
             if (!kcResult.isSuccess()) {
-                throw new RuntimeException("Lỗi Keycloak: " + kcResult.getErrorDetails());
+
+                return ApiResponse.error(
+                        "Tạo người dùng trên Keycloak thất bại",
+                        kcResult.getErrorDetails()
+                );
             }
+
+
             createdKeycloakUserId = kcResult.getData();
 
-            // BƯỚC 3: LƯU THÔNG TIN VÀO CSDL POSTGRESQL (SPRING DATA JPA)
+
             User user = User.builder()
                     .id(createdKeycloakUserId)
                     .username(request.getUsername())
@@ -85,84 +120,254 @@ public class UserServiceImpl implements UserService {
                     .fullName(request.getFullName())
                     .phoneNumber(request.getPhoneNumber())
                     .roleName(roleName)
-                    .isActive(request.getIsActive() != null ? request.getIsActive() : true)
+                    .isActive(
+                            request.getIsActive() != null
+                                    ? request.getIsActive()
+                                    : true
+                    )
+                    .emailVerified(false)
                     .build();
+
 
             userRepository.save(user);
 
-            return ApiResponse.success("Khởi tạo tài khoản người dùng, hộp thư và phân quyền thành công");
+
+            return ApiResponse.success(
+                    "Tạo tài khoản người dùng thành công"
+            );
 
         } catch (Exception ex) {
-            log.error("Lỗi trong quá trình khởi tạo người dùng: {}. Đang thu hồi tài nguyên (Rollback)...", ex.getMessage());
 
-            // THU HỒI TÀI NGUYÊN (ROLLBACK SAGA)
+            log.error(
+                    "Lỗi trong quá trình tạo người dùng: {}. "
+                            + "Bắt đầu Rollback Keycloak...",
+                    ex.getMessage()
+            );
+
+
             if (createdKeycloakUserId != null) {
+
                 try {
-                    keyCloakService.deleteUser(createdKeycloakUserId);
-                    log.info("Rollback: Đã xóa tài khoản Keycloak ID {}", createdKeycloakUserId);
+
+                    keyCloakService.deleteUser(
+                            createdKeycloakUserId
+                    );
+
+                    log.info(
+                            "Rollback: Đã xóa tài khoản Keycloak ID {}",
+                            createdKeycloakUserId
+                    );
+
                 } catch (Exception e) {
-                    log.error("Rollback Keycloak ID {} thất bại: {}", createdKeycloakUserId, e.getMessage());
+
+                    log.error(
+                            "Rollback Keycloak ID {} thất bại: {}",
+                            createdKeycloakUserId,
+                            e.getMessage()
+                    );
                 }
             }
 
-            if (isMailCreated) {
-                try {
-                    mailService.deleteMailAccount(request.getUsername());
-                    log.info("Rollback: Đã xóa tài khoản Stalwart Mail cho user {}", request.getUsername());
-                } catch (Exception e) {
-                    log.error("Rollback Stalwart Mail {} thất bại: {}", request.getUsername(), e.getMessage());
-                }
-            }
 
-            return ApiResponse.error("Tạo người dùng thất bại và đã thu hồi tài nguyên", ex.getMessage());
+            return ApiResponse.error(
+                    "Tạo người dùng thất bại và đã thu hồi tài nguyên",
+                    ex.getMessage()
+            );
         }
     }
 
     @Override
     @Transactional
-    public ApiResponse<Void> updateUser(String id, UserUpdateRequest request) {
-        try {
-            User user = userRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với ID: " + id));
+    public ApiResponse<Void> updateUser(
+            String id,
+            UserUpdateRequest request
+    ) {
 
-            if (request.getUsername() != null && !request.getUsername().isBlank()) {
+        try {
+
+            User user = userRepository.findById(id)
+                    .orElseThrow(() ->
+                            new RuntimeException(
+                                    "Không tìm thấy người dùng với ID: " + id
+                            )
+                    );
+
+
+            // ============================================================
+            // KIỂM TRA PASSWORD + CONFIRM PASSWORD
+            // ============================================================
+
+            if (request.getNewPassword() != null
+                    && !request.getNewPassword().isBlank()) {
+
+                if (request.getConfirmNewPassword() == null
+                        || request.getConfirmNewPassword().isBlank()) {
+
+                    return ApiResponse.error(
+                            "Cập nhật người dùng thất bại",
+                            "Xác nhận mật khẩu mới không được để trống"
+                    );
+                }
+
+
+                if (!request.getNewPassword()
+                        .equals(request.getConfirmNewPassword())) {
+
+                    return ApiResponse.error(
+                            "Cập nhật người dùng thất bại",
+                            "Mật khẩu mới và xác nhận mật khẩu không khớp"
+                    );
+                }
+            }
+
+
+            // ============================================================
+            // USERNAME
+            // ============================================================
+
+            if (request.getUsername() != null
+                    && !request.getUsername().isBlank()) {
+
                 user.setUsername(request.getUsername());
             }
 
-            if (request.getEmail() != null && !request.getEmail().isBlank()) {
+
+            // ============================================================
+            // EMAIL
+            // ============================================================
+
+            if (request.getEmail() != null
+                    && !request.getEmail().isBlank()) {
+
                 user.setEmail(request.getEmail());
             }
 
-            if (request.getFullName() != null && !request.getFullName().isBlank()) {
+
+            // ============================================================
+            // FULL NAME
+            // ============================================================
+
+            if (request.getFullName() != null
+                    && !request.getFullName().isBlank()) {
+
                 user.setFullName(request.getFullName());
             }
 
-            if (request.getEmail() != null || request.getFullName() != null) {
-                keyCloakService.updateKeycloakUser(id, user.getEmail(), user.getFullName());
+
+            // ============================================================
+            // ĐỒNG BỘ EMAIL / FULL NAME SANG KEYCLOAK
+            // ============================================================
+
+            if (request.getEmail() != null
+                    || request.getFullName() != null) {
+
+                ApiResponse<Void> keycloakResult =
+                        keyCloakService.updateKeycloakUser(
+                                id,
+                                user.getEmail(),
+                                user.getFullName()
+                        );
+
+                if (!keycloakResult.isSuccess()) {
+                    return keycloakResult;
+                }
             }
 
-            if (request.getNewPassword() != null && !request.getNewPassword().isBlank()) {
-                keyCloakService.setPassword(id, request.getNewPassword(), false);
+
+            // ============================================================
+            // PASSWORD
+            // ============================================================
+
+            if (request.getNewPassword() != null
+                    && !request.getNewPassword().isBlank()) {
+
+                ApiResponse<Void> passwordResult =
+                        keyCloakService.setPassword(
+                                id,
+                                request.getNewPassword(),
+                                false
+                        );
+
+                if (!passwordResult.isSuccess()) {
+                    return passwordResult;
+                }
             }
+
+
+            // ============================================================
+            // PHONE
+            // ============================================================
 
             if (request.getPhoneNumber() != null) {
-                user.setPhoneNumber(request.getPhoneNumber());
+
+                user.setPhoneNumber(
+                        request.getPhoneNumber()
+                );
             }
 
-            if (request.getRoleName() != null && !request.getRoleName().isBlank()) {
-                user.setRoleName(request.getRoleName());
-                keyCloakService.updateUserRole(id, request.getRoleName());
+
+            // ============================================================
+            // ROLE
+            // ============================================================
+
+            if (request.getRoleName() != null
+                    && !request.getRoleName().isBlank()) {
+
+                user.setRoleName(
+                        request.getRoleName()
+                );
+
+                ApiResponse<Void> roleResult =
+                        keyCloakService.updateUserRole(
+                                id,
+                                request.getRoleName()
+                        );
+
+                if (!roleResult.isSuccess()) {
+                    return roleResult;
+                }
             }
+
+
+            // ============================================================
+            // ACTIVE
+            // ============================================================
 
             if (request.getIsActive() != null) {
-                user.setIsActive(request.getIsActive());
-                keyCloakService.setUserEnabled(id, request.getIsActive());
+
+                user.setIsActive(
+                        request.getIsActive()
+                );
+
+                ApiResponse<Void> enabledResult =
+                        keyCloakService.setUserEnabled(
+                                id,
+                                request.getIsActive()
+                        );
+
+                if (!enabledResult.isSuccess()) {
+                    return enabledResult;
+                }
             }
 
+
+            // ============================================================
+            // SAVE POSTGRES
+            // ============================================================
+
             userRepository.save(user);
-            return ApiResponse.success("Cập nhật thông tin người dùng thành công");
+
+
+            return ApiResponse.success(
+                    "Cập nhật thông tin người dùng thành công"
+            );
+
         } catch (Exception ex) {
-            return ApiResponse.error("Cập nhật thông tin thất bại", ex.getMessage());
+
+            return ApiResponse.error(
+                    "Cập nhật thông tin thất bại",
+                    ex.getMessage()
+            );
         }
     }
 
@@ -181,7 +386,6 @@ public class UserServiceImpl implements UserService {
 
             for (User user : users) {
                 keyCloakService.deleteUser(user.getId());
-                mailService.deleteMailAccount(user.getUsername());
             }
 
             userRepository.deleteAll(users);
@@ -213,7 +417,6 @@ public class UserServiceImpl implements UserService {
             direction = order.getDirection().name();
         }
 
-        // Gọi MyBatis Mapper để lọc động + phân trang + sắp xếp
         List<User> users = userMapper.searchUsers(
                 cleanKeyword,
                 pageable.getOffset(),
@@ -245,6 +448,7 @@ public class UserServiceImpl implements UserService {
                 .phoneNumber(user.getPhoneNumber())
                 .roleName(user.getRoleName())
                 .isActive(user.getIsActive())
+                .emailVerified(user.getEmailVerified())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();

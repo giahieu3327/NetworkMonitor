@@ -17,14 +17,16 @@
 -- 1.1. Lưu trữ thông tin tài khoản người dùng được đồng bộ từ Keycloak Profile
 CREATE TABLE users (
     id VARCHAR(36) PRIMARY KEY, -- Keycloak Subject ID (UUID)
-    username VARCHAR(50) NOT NULL UNIQUE, -- Tên đăng nhập
-    email VARCHAR(100) NOT NULL UNIQUE, -- Địa chỉ email
-    full_name VARCHAR(100) NOT NULL, -- Họ và tên đầy đủ
-    phone_number VARCHAR(20), -- Số điện thoại liên hệ
-    role_name VARCHAR(50) DEFAULT 'ROLE_USER', -- Vai trò hệ thống (ROLE_USER, ROLE_ADMIN,...)
-    is_active BOOLEAN DEFAULT TRUE, -- Trạng thái tài khoản (TRUE: Hoạt động, FALSE: Khóa)
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, -- Thời điểm tạo
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP  -- Thời điểm cập nhật
+    username VARCHAR(50) NOT NULL UNIQUE, -- Tên đăng nhập từ Keycloak
+    email VARCHAR(100) NOT NULL UNIQUE, -- Địa chỉ email từ Keycloak
+    full_name VARCHAR(100) NOT NULL, -- Họ và tên đầy đủ từ Keycloak
+    phone_number VARCHAR(20), -- Số điện thoại từ Keycloak
+    role_name VARCHAR(50) NOT NULL, -- Vai trò hệ thống từ Keycloak
+    is_active BOOLEAN NOT NULL DEFAULT TRUE, -- Trạng thái tài khoản từ Keycloak (enabled)
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE, -- Trạng thái xác thực email từ Keycloak
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL, -- Thời điểm tạo từ Keycloak (createdTimestamp)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP -- Thời điểm cập nhật, chỉ PostgreSQL quản lý
+
 );
 
 -- ------------------------------------------------------------

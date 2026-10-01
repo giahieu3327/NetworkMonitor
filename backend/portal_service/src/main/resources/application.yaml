@@ -5,23 +5,29 @@ spring:
   application:
     name: portal_service
 
-  # 1. Primary Datasource (monitor_db)
+  # ============================================================
+  # 1. Primary Datasource - monitor_db
+  # ============================================================
   datasource:
     hikari:
       jdbc-url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB_MONITOR:monitor_db}
       username: ${POSTGRES_USER:postgres}
-      password: ${POSTGRES_PASSWORD:Admin@123}
+      password: ${POSTGRES_PASSWORD:Admin@123456}
       driver-class-name: org.postgresql.Driver
 
-  # 2. Camunda Datasource (camunda_db)
+  # ============================================================
+  # 2. Camunda Datasource - camunda_db
+  # ============================================================
   camunda-datasource:
     hikari:
       jdbc-url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB_CAMUNDA:camunda_db}
       username: ${POSTGRES_USER:postgres}
-      password: ${POSTGRES_PASSWORD:Admin@123}
+      password: ${POSTGRES_PASSWORD:Admin@123456}
       driver-class-name: org.postgresql.Driver
 
+  # ============================================================
   # 3. JPA / Hibernate
+  # ============================================================
   jpa:
     hibernate:
       ddl-auto: validate
@@ -31,29 +37,37 @@ spring:
         physical_naming_strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
     show-sql: true
 
+  # ============================================================
   # 4. Flyway Migration
+  # ============================================================
   flyway:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
 
-  # 5. Redis Config
+  # ============================================================
+  # 5. Redis
+  # ============================================================
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:Admin@123}
+      password: ${REDIS_PASSWORD:Admin@123456}
       timeout: 60s
       database: 0
 
+  # ============================================================
   # 6. Redis Cache
+  # ============================================================
   cache:
     type: redis
     redis:
       time-to-live: 600000ms
       cache-null-values: false
 
-  # 7. OAuth2 Resource Server (Keycloak Integration)
+  # ============================================================
+  # 7. OAuth2 Resource Server - Keycloak
+  # ============================================================
   security:
     oauth2:
       resourceserver:
@@ -61,7 +75,9 @@ spring:
           issuer-uri: http://${KEYCLOAK_HOST:localhost}:${KEYCLOAK_PORT:8080}/realms/${KEYCLOAK_REALM:monitor-realm}
           jwk-set-uri: http://${KEYCLOAK_HOST:localhost}:${KEYCLOAK_PORT:8080}/realms/${KEYCLOAK_REALM:monitor-realm}/protocol/openid-connect/certs
 
-  # 8. Kafka Config
+  # ============================================================
+  # 8. Kafka
+  # ============================================================
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
@@ -77,10 +93,12 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
 
-  # 9. Mail Service Config (Stalwart Mail Server)
+  # ============================================================
+  # 9. Mail - Stalwart
+  # ============================================================
   mail:
     host: ${STALWART_HOST:localhost}
-    port: ${STALWART_SUBMISSION_PORT:587}
+    port: ${STALWART_SUBMISSION_PORT:465}
     username: ${STALWART_MAIL_USER:no-reply@monitor.com}
     password: ${STALWART_MAIL_PASSWORD:NoReply@123}
     protocol: smtp
@@ -88,17 +106,19 @@ spring:
       mail:
         smtp:
           auth: true
-          starttls:
+          ssl:
             enable: true
-            required: false
+            trust: "*" # Cho phép tin tưởng tất cả SSL certs
 
 
-# 10. Camunda BPMN Engine Config
+# ==============================================================
+# 10. Camunda BPMN
+# ==============================================================
 camunda:
   bpm:
     admin-user:
       id: ${CAMUNDA_ADMIN_ID:camunda-admin}
-      password: ${CAMUNDA_ADMIN_PASSWORD:Admin@123}
+      password: ${CAMUNDA_ADMIN_PASSWORD:Admin@123456}
       first-name: Camunda
       last-name: Admin
 
@@ -111,38 +131,50 @@ camunda:
     database-schema-update: true
 
 
-# 11. Keycloak Admin Client Config
+# ==============================================================
+# 11. Keycloak Admin Client
+# ==============================================================
 keycloak:
   server-url: http://${KEYCLOAK_HOST:localhost}:${KEYCLOAK_PORT:8080}
   realm: ${KEYCLOAK_REALM:monitor-realm}
 
   admin:
     username: ${KEYCLOAK_ADMIN:admin}
-    password: ${KEYCLOAK_ADMIN_PASSWORD:Admin@123}
+    password: ${KEYCLOAK_ADMIN_PASSWORD:Admin@123456}
     client-id: admin-cli
 
   user-client-id: ${KEYCLOAK_CLIENT_ID:monitor-frontend}
 
 
+# ==============================================================
 # 12. Default Application Admin
+# ==============================================================
 app:
+  frontend:
+    baseurl: ${FRONTEND_BASE_URL:http://localhost:3000}
   admin:
     username: ${APP_ADMIN_USERNAME:admin}
     email: ${APP_ADMIN_EMAIL:admin@monitor.com}
-    password: ${APP_ADMIN_PASSWORD:Admin@123}
+    password: ${APP_ADMIN_PASSWORD:Admin@123456}
     full-name: ${APP_ADMIN_FULLNAME:Super Administrator}
     phone: ${APP_ADMIN_PHONE:0909090909}
     role: ${APP_ADMIN_ROLE:ROLE_SUPER_ADMIN}
 
+
+# ==============================================================
+# 13. Stalwart REST API
+# ==============================================================
 stalwart:
   api-url: ${STALWART_API_URL:http://localhost:8080}
-  admin-user: ${STALWART_ADMIN_USER:admin@monitor.com} # Tài khoản Admin có quyền gọi REST API quản trị của Stalwart
-  admin-password: ${STALWART_ADMIN_PASSWORD:Admin@123}
+  admin-user: ${STALWART_ADMIN_USER:admin@monitor.com}
+  admin-password: ${STALWART_ADMIN_PASSWORD:Admin@123456}
   domain: ${STALWART_MAIL_DOMAIN:monitor.com}
   system-sender: ${STALWART_SYSTEM_SENDER:no-reply@monitor.com}
 
 
-# 13. MyBatis Config
+# ==============================================================
+# 14. MyBatis
+# ==============================================================
 mybatis:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.network_monitor.portal_service.model.entity
@@ -152,22 +184,74 @@ mybatis:
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
 
-# 14. JasperReports Template Path
+# ==============================================================
+# 15. JasperReports
+# ==============================================================
 jasper:
   report:
     template-path: classpath:reports/
 
 
-# 15. SpringDoc OpenAPI (Swagger UI)
+# ==============================================================
+# 16. SpringDoc OpenAPI / Swagger
+# ==============================================================
 springdoc:
+  # OpenAPI JSON
   api-docs:
+    enabled: true
     path: /api-docs
 
+  # Swagger UI
   swagger-ui:
+    enabled: true
     path: /swagger-ui.html
 
+  # ============================================================
+  # Hiển thị Spring Boot Actuator trong Swagger
+  # ============================================================
+  show-actuator: true
 
-# 16. Logging
+
+# ==============================================================
+# 17. Spring Boot Actuator
+# ==============================================================
+management:
+  endpoints:
+    web:
+      # Base URL:
+      # http://localhost:5000/actuator
+      base-path: /actuator
+
+      # Expose TẤT CẢ actuator endpoints
+      #
+      # Lưu ý: phải đặt "*" trong dấu ngoặc kép trong YAML.
+      exposure:
+        include: "*"
+
+  endpoint:
+    health:
+      # Hiển thị chi tiết health check
+      show-details: always
+      show-components: always
+
+  info:
+    env:
+      enabled: true
+
+
+# ==============================================================
+# 18. Application information
+# ==============================================================
+info:
+  app:
+    name: "NMS Portal Service"
+    description: "Network Monitoring System Portal Service"
+    version: "1.0.0"
+
+
+# ==============================================================
+# 19. Logging
+# ==============================================================
 logging:
   level:
     root: INFO

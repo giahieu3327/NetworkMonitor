@@ -21,53 +21,157 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<UserResponse> getMyProfile(String currentUserId) {
+
         try {
+
             User user = userRepository.findById(currentUserId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy thông tin tài khoản"));
-            return ApiResponse.success("Lấy thông tin cá nhân thành công", mapToResponse(user));
+                    .orElseThrow(() ->
+                            new RuntimeException(
+                                    "Không tìm thấy thông tin tài khoản"
+                            )
+                    );
+
+            return ApiResponse.success(
+                    "Lấy thông tin cá nhân thành công",
+                    mapToResponse(user)
+            );
+
         } catch (Exception ex) {
-            return ApiResponse.error("Lấy thông tin cá nhân thất bại", ex.getMessage());
+
+            return ApiResponse.error(
+                    "Lấy thông tin cá nhân thất bại",
+                    ex.getMessage()
+            );
         }
     }
 
+
     @Override
     @Transactional
-    public ApiResponse<Void> updateMyProfile(String currentUserId, String currentUsername, ProfileUpdateRequest request) {
+    public ApiResponse<Void> updateMyProfile(
+            String currentUserId,
+            String currentUsername,
+            ProfileUpdateRequest request
+    ) {
+
         try {
+
             User user = userRepository.findById(currentUserId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy thông tin tài khoản"));
+                    .orElseThrow(() ->
+                            new RuntimeException(
+                                    "Không tìm thấy thông tin tài khoản"
+                            )
+                    );
 
-            // 1. Cập nhật mật khẩu nếu truyền newPassword
-            if (request.getNewPassword() != null && !request.getNewPassword().isBlank()) {
-                if (request.getOldPassword() == null || request.getOldPassword().isBlank()) {
-                    return ApiResponse.error("Đổi mật khẩu thất bại", "Mật khẩu cũ không được để trống");
+
+            // ========================================================
+            // ĐỔI MẬT KHẨU
+            // ========================================================
+
+            if (request.getNewPassword() != null
+                    && !request.getNewPassword().isBlank()) {
+
+                // Kiểm tra mật khẩu cũ
+                if (request.getOldPassword() == null
+                        || request.getOldPassword().isBlank()) {
+
+                    return ApiResponse.error(
+                            "Đổi mật khẩu thất bại",
+                            "Mật khẩu cũ không được để trống"
+                    );
                 }
-                ApiResponse<Void> changePwdResult = keyCloakService.changePassword(
-                        currentUserId, currentUsername, request.getOldPassword(), request.getNewPassword());
-                if (!changePwdResult.isSuccess()) {
-                    return changePwdResult;
+
+
+                // Kiểm tra confirm password
+                if (request.getConfirmNewPassword() == null
+                        || request.getConfirmNewPassword().isBlank()) {
+
+                    return ApiResponse.error(
+                            "Đổi mật khẩu thất bại",
+                            "Xác nhận mật khẩu mới không được để trống"
+                    );
+                }
+
+
+                // Kiểm tra password == confirm password
+                if (!request.getNewPassword()
+                        .equals(request.getConfirmNewPassword())) {
+
+                    return ApiResponse.error(
+                            "Đổi mật khẩu thất bại",
+                            "Mật khẩu mới và xác nhận mật khẩu không khớp"
+                    );
+                }
+
+
+                // Gọi Keycloak đổi mật khẩu
+                ApiResponse<Void> changePasswordResult =
+                        keyCloakService.changePassword(
+                                currentUserId,
+                                currentUsername,
+                                request.getOldPassword(),
+                                request.getNewPassword()
+                        );
+
+                if (!changePasswordResult.isSuccess()) {
+                    return changePasswordResult;
                 }
             }
 
-            // 2. Cập nhật Họ tên
-            if (request.getFullName() != null && !request.getFullName().isBlank()) {
+
+            // ========================================================
+            // CẬP NHẬT FULL NAME
+            // ========================================================
+
+            if (request.getFullName() != null
+                    && !request.getFullName().isBlank()) {
+
+                ApiResponse<Void> keycloakResult =
+                        keyCloakService.updateKeycloakUser(
+                                currentUserId,
+                                user.getEmail(),
+                                request.getFullName()
+                        );
+
+                if (!keycloakResult.isSuccess()) {
+                    return keycloakResult;
+                }
+
                 user.setFullName(request.getFullName());
-                keyCloakService.updateKeycloakUser(currentUserId, user.getEmail(), request.getFullName());
             }
 
-            // 3. Cập nhật Số điện thoại
+
+            // ========================================================
+            // CẬP NHẬT PHONE
+            // ========================================================
+
             if (request.getPhoneNumber() != null) {
                 user.setPhoneNumber(request.getPhoneNumber());
             }
 
+
+            // ========================================================
+            // SAVE POSTGRES
+            // ========================================================
+
             userRepository.save(user);
-            return ApiResponse.success("Cập nhật thông tin cá nhân thành công");
+
+            return ApiResponse.success(
+                    "Cập nhật thông tin cá nhân thành công"
+            );
+
         } catch (Exception ex) {
-            return ApiResponse.error("Cập nhật thông tin cá nhân thất bại", ex.getMessage());
+
+            return ApiResponse.error(
+                    "Cập nhật thông tin cá nhân thất bại",
+                    ex.getMessage()
+            );
         }
     }
 
+
     private UserResponse mapToResponse(User user) {
+        
         return UserResponse.builder()
                 .id(user.getId())
                 .username(user.getUsername())
@@ -76,6 +180,7 @@ public class ProfileServiceImpl implements ProfileService {
                 .phoneNumber(user.getPhoneNumber())
                 .roleName(user.getRoleName())
                 .isActive(user.getIsActive())
+                .emailVerified(user.getEmailVerified())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();

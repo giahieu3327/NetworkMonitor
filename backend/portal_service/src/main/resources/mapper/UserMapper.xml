@@ -4,58 +4,162 @@
 
 <mapper namespace="com.network_monitor.portal_service.mapper.UserMapper">
 
-    <!-- Result Map cho Entity User -->
-    <resultMap id="UserResultMap" type="com.network_monitor.portal_service.model.entity.User">
+    <!-- ============================================================
+         RESULT MAP
+         Mapping dữ liệu từ PostgreSQL -> Entity User
+         ============================================================ -->
+    <resultMap id="UserResultMap"
+               type="com.network_monitor.portal_service.model.entity.User">
+
         <id property="id" column="id"/>
+
         <result property="username" column="username"/>
+
         <result property="email" column="email"/>
+
         <result property="fullName" column="full_name"/>
+
         <result property="phoneNumber" column="phone_number"/>
+
         <result property="roleName" column="role_name"/>
+
         <result property="isActive" column="is_active"/>
+
+        <result property="emailVerified" column="email_verified"/>
+
         <result property="createdAt" column="created_at"/>
+
         <result property="updatedAt" column="updated_at"/>
+
     </resultMap>
 
-    <!-- Clause tái sử dụng cho tìm kiếm keyword trên nhiều trường -->
+
+    <!-- ============================================================
+         SEARCH WHERE CLAUSE
+         Tìm kiếm keyword trên nhiều trường
+         ============================================================ -->
     <sql id="searchWhereClause">
+
         <where>
-            <if test="keyword != null and keyword != ''">
-                LOWER(username) LIKE LOWER(CONCAT('%', #{keyword}, '%'))
-                OR LOWER(email) LIKE LOWER(CONCAT('%', #{keyword}, '%'))
-                OR LOWER(full_name) LIKE LOWER(CONCAT('%', #{keyword}, '%'))
-                OR LOWER(phone_number) LIKE LOWER(CONCAT('%', #{keyword}, '%'))
-                OR LOWER(role_name) LIKE LOWER(CONCAT('%', #{keyword}, '%'))
+
+            <if test="keyword != null and keyword.trim() != ''">
+
+                (
+                    LOWER(username) LIKE LOWER(CONCAT('%', #{keyword}, '%'))
+
+                    OR LOWER(email) LIKE LOWER(CONCAT('%', #{keyword}, '%'))
+
+                    OR LOWER(full_name) LIKE LOWER(CONCAT('%', #{keyword}, '%'))
+
+                    OR LOWER(phone_number) LIKE LOWER(CONCAT('%', #{keyword}, '%'))
+
+                    OR LOWER(role_name) LIKE LOWER(CONCAT('%', #{keyword}, '%'))
+                )
+
             </if>
+
         </where>
+
     </sql>
 
-    <!-- Query lấy danh sách phân trang -->
-    <select id="searchUsers" resultMap="UserResultMap">
-        SELECT id, username, email, full_name, phone_number, role_name, is_active, created_at, updated_at
+
+    <!-- ============================================================
+         SEARCH USERS
+         Phân trang + tìm kiếm + sắp xếp
+         ============================================================ -->
+    <select id="searchUsers"
+            resultMap="UserResultMap">
+
+        SELECT
+            id,
+            username,
+            email,
+            full_name,
+            phone_number,
+            role_name,
+            is_active,
+            email_verified,
+            created_at,
+            updated_at
+
         FROM users
+
         <include refid="searchWhereClause"/>
+
         ORDER BY
+
         <choose>
-            <when test="sortBy == 'username'">username</when>
-            <when test="sortBy == 'email'">email</when>
-            <when test="sortBy == 'fullName'">full_name</when>
-            <when test="sortBy == 'roleName'">role_name</when>
-            <when test="sortBy == 'updatedAt'">updated_at</when>
-            <otherwise>created_at</otherwise>
+
+            <when test="sortBy == 'username'">
+                username
+            </when>
+
+            <when test="sortBy == 'email'">
+                email
+            </when>
+
+            <when test="sortBy == 'fullName'">
+                full_name
+            </when>
+
+            <when test="sortBy == 'roleName'">
+                role_name
+            </when>
+
+            <when test="sortBy == 'isActive'">
+                is_active
+            </when>
+
+            <when test="sortBy == 'emailVerified'">
+                email_verified
+            </when>
+
+            <when test="sortBy == 'createdAt'">
+                created_at
+            </when>
+
+            <when test="sortBy == 'updatedAt'">
+                updated_at
+            </when>
+
+            <otherwise>
+                created_at
+            </otherwise>
+
         </choose>
+
         <choose>
-            <when test="direction != null and direction.equalsIgnoreCase('ASC')">ASC</when>
-            <otherwise>DESC</otherwise>
+
+            <when test="direction != null
+                        and direction.equalsIgnoreCase('ASC')">
+                ASC
+            </when>
+
+            <otherwise>
+                DESC
+            </otherwise>
+
         </choose>
-        LIMIT #{limit} OFFSET #{offset}
+
+        LIMIT #{limit}
+        OFFSET #{offset}
+
     </select>
 
-    <!-- Query đếm tổng dòng -->
-    <select id="countSearchUsers" resultType="long">
+
+    <!-- ============================================================
+         COUNT USERS
+         Đếm tổng số user theo keyword
+         ============================================================ -->
+    <select id="countSearchUsers"
+            resultType="long">
+
         SELECT COUNT(*)
+
         FROM users
+
         <include refid="searchWhereClause"/>
+
     </select>
 
 </mapper>

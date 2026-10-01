@@ -25,7 +25,7 @@ public class UserController {
 
     private final UserService userService;
 
-    // 1. Tạo mới User, Mailbox & Keycloak account (Chỉ SUPER_ADMIN)
+    // 1. Khởi tạo User mới + tùy chọn sendVerificationEmail
     @PostMapping
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> insertUser(@Valid @RequestBody UserInsertRequest request) {
@@ -36,12 +36,12 @@ public class UserController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    // 2. Cập nhật User khác từ xa (Chỉ SUPER_ADMIN)
+    // 2. Cập nhật thông tin User
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> updateUser(
             @PathVariable String id,
-            @RequestBody UserUpdateRequest request) {
+            @Valid @RequestBody UserUpdateRequest request) {
         ApiResponse<Void> response = userService.updateUser(id, request);
         if (!response.isSuccess()) {
             return ResponseEntity.badRequest().body(response);
@@ -49,7 +49,7 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
-    // 3. Xóa nhiều User hàng loạt (Chỉ SUPER_ADMIN)
+    // 3. Xóa nhiều User hàng loạt
     @DeleteMapping
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteUsers(@RequestBody List<String> ids) {
@@ -60,9 +60,9 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
-    // 4. Xem chi tiết User theo ID (SUPER_ADMIN hoặc ADMIN)
+    // 4. Lấy chi tiết User theo ID
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<UserResponse>> getUserById(@PathVariable String id) {
         ApiResponse<UserResponse> response = userService.getUserById(id);
         if (!response.isSuccess()) {
@@ -71,9 +71,9 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
-    // 5. Lấy danh sách User theo Keyword + Phân trang (SUPER_ADMIN hoặc ADMIN)
+    // 5. Tìm kiếm User theo Keyword + Phân trang
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<Page<UserResponse>> getUsers(
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
@@ -88,9 +88,9 @@ public class UserController {
         return ResponseEntity.ok(result);
     }
 
-    // 6. Lấy danh sách Realm Roles từ Keycloak (SUPER_ADMIN hoặc ADMIN)
+    // 6. Lấy danh sách Roles chính thức từ Keycloak
     @GetMapping("/roles")
-    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<List<RoleResponse>>> getAllRoles() {
         ApiResponse<List<RoleResponse>> response = userService.getAllRoles();
         if (!response.isSuccess()) {

@@ -1,17 +1,50 @@
 package com.network_monitor.portal_service.service;
 
+import com.network_monitor.portal_service.model.dto.request.SendMailRequest;
+import com.network_monitor.portal_service.model.dto.request.SendPasswordResetOtpEmailRequest;
+import com.network_monitor.portal_service.model.dto.request.SendVerificationEmailRequest;
+import com.network_monitor.portal_service.model.dto.request.VerifyEmailTokenRequest;
+import com.network_monitor.portal_service.model.dto.request.VerifyPasswordResetOtpRequest;
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
 
-import java.io.File;
+import java.io.InputStream;
 
 public interface MailService {
 
-    // --- QUẢN LÝ TÀI KHOẢN HỘP THƯ (STALWART ADMIN API) ---
-    ApiResponse<Void> createMailAccount(String username, String password, String fullName);
-    ApiResponse<Void> deleteMailAccount(String username);
+    // 1. Gửi email text
+    ApiResponse<Void> sendTextEmail(
+            SendMailRequest request
+    );
 
-    // --- GỬI MAIL THÔNG BÁO TỰ ĐỘNG (SPRING JAVA MAIL SENDER / SMTP) ---
-    ApiResponse<Void> sendSimpleEmail(String toEmail, String subject, String content);
-    ApiResponse<Void> sendHtmlEmail(String toEmail, String subject, String htmlContent);
-    ApiResponse<Void> sendEmailWithAttachment(String toEmail, String subject, String content, File attachment);
+    // 2. Gửi email HTML
+    ApiResponse<Void> sendHtmlEmail(
+            SendMailRequest request
+    );
+
+    // 3. Gửi email kèm file
+    ApiResponse<Void> sendEmailWithAttachment(
+            SendMailRequest request,
+            String fileName,
+            InputStream fileInputStream
+    );
+
+    // 4. Gửi email xác thực
+    ApiResponse<Void> sendVerificationEmail(
+            SendVerificationEmailRequest request
+    );
+
+    // 5. Xác thực email bằng token
+    ApiResponse<String> verifyEmailToken(
+            VerifyEmailTokenRequest request
+    );
+
+    // 6. Gửi OTP reset password
+    ApiResponse<Void> sendPasswordResetOtpEmail(
+            SendPasswordResetOtpEmailRequest request
+    );
+
+    // 7. Xác thực OTP reset password
+    ApiResponse<String> verifyPasswordResetOtp(
+            VerifyPasswordResetOtpRequest request
+    );
 }

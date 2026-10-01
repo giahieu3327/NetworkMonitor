@@ -2,7 +2,6 @@ package com.network_monitor.portal_service.model.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.OffsetDateTime;
@@ -18,33 +17,69 @@ public class User {
 
     @Id
     @Column(name = "id", length = 36, nullable = false)
-    private String id; // Keycloak UUID
+    private String id; // Keycloak Subject ID (UUID)
 
-    @Column(name = "username", length = 50, nullable = false, unique = true)
-    private String username;
+    @Column(
+            name = "username",
+            length = 50,
+            nullable = false,
+            unique = true
+    )
+    private String username; // Keycloak username
 
-    @Column(name = "email", length = 100, nullable = false, unique = true)
-    private String email;
+    @Column(
+            name = "email",
+            length = 100,
+            nullable = false,
+            unique = true
+    )
+    private String email; // Keycloak email
 
-    @Column(name = "full_name", length = 100, nullable = false)
-    private String fullName;
+    @Column(
+            name = "full_name",
+            length = 100,
+            nullable = false
+    )
+    private String fullName; // Keycloak firstName + lastName
 
-    @Column(name = "phone_number", length = 20)
-    private String phoneNumber;
+    @Column(
+            name = "phone_number",
+            length = 20
+    )
+    private String phoneNumber; // Keycloak attribute
 
-    @Column(name = "role_name", length = 50)
+    @Column(
+            name = "role_name",
+            length = 50,
+            nullable = false
+    )
+    private String roleName; // Keycloak role
+
+    @Column(
+            name = "is_active",
+            nullable = false
+    )
     @Builder.Default
-    private String roleName = "ROLE_GUEST_VIEWER";
+    private Boolean isActive = true; // Keycloak enabled
 
-    @Column(name = "is_active")
+    @Column(
+            name = "email_verified",
+            nullable = false
+    )
     @Builder.Default
-    private Boolean isActive = true;
+    private Boolean emailVerified = false; // Keycloak emailVerified
 
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private OffsetDateTime createdAt;
+    @Column(
+            name = "created_at",
+            nullable = false,
+            updatable = false
+    )
+    private OffsetDateTime createdAt; // Keycloak createdTimestamp
 
     @UpdateTimestamp
-    @Column(name = "updated_at")
-    private OffsetDateTime updatedAt;
+    @Column(
+            name = "updated_at",
+            nullable = false
+    )
+    private OffsetDateTime updatedAt; // PostgreSQL/Application quản lý
 }

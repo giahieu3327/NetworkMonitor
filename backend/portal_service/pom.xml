@@ -125,17 +125,23 @@
 			<artifactId>spring-boot-starter-mail</artifactId>
 		</dependency>
 
+		<!-- 14. Spring Boot Actuator -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
 		<!-- ==================================================== -->
 		<!-- PHẦN 2: DEPENDENCIES THÊM THỦ CÔNG                  -->
 		<!-- ==================================================== -->
 
-		<!-- 14. Spring Boot Starter Data Redis -->
+		<!-- 15. Spring Boot Starter Data Redis -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-redis</artifactId>
 		</dependency>
 
-		<!-- 15. Keycloak Admin Client -->
+		<!-- 16. Keycloak Admin Client -->
 		<dependency>
 			<groupId>org.keycloak</groupId>
 			<artifactId>keycloak-admin-client</artifactId>

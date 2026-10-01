@@ -4,6 +4,7 @@ import com.network_monitor.portal_service.model.dto.request.ProfileUpdateRequest
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
 import com.network_monitor.portal_service.model.dto.response.UserResponse;
 import com.network_monitor.portal_service.service.ProfileService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +20,7 @@ public class ProfileController {
 
     private final ProfileService profileService;
 
-    // 1. Lấy Profile cá nhân của người dùng đang đăng nhập
+    // 1. Lấy thông tin cá nhân của người dùng đang đăng nhập
     @GetMapping("/me")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<UserResponse>> getMyProfile(@AuthenticationPrincipal Jwt jwt) {
@@ -31,12 +32,12 @@ public class ProfileController {
         return ResponseEntity.ok(response);
     }
 
-    // 2. Cập nhật Profile cá nhân (Đổi mật khẩu, Họ tên, SĐT)
+    // 2. Cập nhật thông tin cá nhân (Đổi mật khẩu, Họ tên, SĐT)
     @PutMapping("/me")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Void>> updateMyProfile(
             @AuthenticationPrincipal Jwt jwt,
-            @RequestBody ProfileUpdateRequest request) {
+            @Valid @RequestBody ProfileUpdateRequest request) {
         String currentUserId = jwt.getSubject();
         String currentUsername = jwt.getClaimAsString("preferred_username");
         ApiResponse<Void> response = profileService.updateMyProfile(currentUserId, currentUsername, request);

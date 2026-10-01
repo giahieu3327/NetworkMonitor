@@ -14,12 +14,22 @@ import java.time.OffsetDateTime;
 public class UserResponse {
 
     private String id;
+
     private String username;
+
     private String email;
+
     private String fullName;
+
     private String phoneNumber;
+
     private String roleName;
+
     private Boolean isActive;
+
+    private Boolean emailVerified;
+
     private OffsetDateTime createdAt;
+
     private OffsetDateTime updatedAt;
 }

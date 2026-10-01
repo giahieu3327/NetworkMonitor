@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import RegisterPage from './pages/RegisterPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('access_token');
@@ -16,7 +17,13 @@ function App() {
   return (
     <Router>
       <Routes>
+        {/* Public Routes */}
         <Route path="/login" element={<LoginPage />} />
+        
+        {/* Route xác thực email mở rộng công khai */}
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+
+        {/* Protected Routes */}
         <Route
           path="/dashboard"
           element={
@@ -33,6 +40,8 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Fallback Route */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Router>

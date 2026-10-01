@@ -18,7 +18,7 @@ public class ApiResponse<T> {
     private boolean success;
     private String message;
     private T data;
-    private Object errorDetails; // Hỗ trợ cả String lẫn Map/List chi tiết lỗi Validation
+    private Object errorDetails;
 
     @Builder.Default
     private OffsetDateTime timestamp = OffsetDateTime.now();
@@ -35,6 +35,13 @@ public class ApiResponse<T> {
                 .success(true)
                 .message(message)
                 .data(data)
+                .build();
+    }
+
+    public static <T> ApiResponse<T> error(String message) {
+        return ApiResponse.<T>builder()
+                .success(false)
+                .message(message)
                 .build();
     }
 
