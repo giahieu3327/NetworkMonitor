@@ -1,18 +1,21 @@
 package com.network_monitor.portal_service.config;
 
+import com.network_monitor.portal_service.model.dto.request.SendVerificationEmailRequest;
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
+import com.network_monitor.portal_service.model.dto.response.UserResponse;
 import com.network_monitor.portal_service.model.entity.User;
 import com.network_monitor.portal_service.repository.UserRepository;
 import com.network_monitor.portal_service.service.KeyCloakService;
+import com.network_monitor.portal_service.service.MailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Configuration;
-import org.keycloak.representations.idm.UserRepresentation;
 
 import java.time.Instant;
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 @Configuration
@@ -21,6 +24,7 @@ import java.time.ZoneOffset;
 public class InitAdmin implements CommandLineRunner {
 
     private final KeyCloakService keyCloakService;
+    private final MailService mailService;
     private final UserRepository userRepository;
 
     @Value("${app.admin.username}")
@@ -41,7 +45,6 @@ public class InitAdmin implements CommandLineRunner {
     @Value("${app.admin.role}")
     private String adminRole;
 
-
     @Override
     public void run(String... args) {
         try {
@@ -55,43 +58,25 @@ public class InitAdmin implements CommandLineRunner {
         }
     }
 
-
     private void initAdminAccount() {
-
         boolean keycloakExists = checkKeycloakAdminExists();
         boolean postgresExists = checkPostgresAdminExists();
 
-        /*
-         * Nếu tài khoản đã tồn tại đầy đủ ở cả Keycloak và PostgreSQL
-         * thì không cần làm gì thêm.
-         */
         if (keycloakExists && postgresExists) {
-
             log.info(
-                    "Tài khoản Super Admin đã tồn tại đầy đủ trên cả "
-                            + "Keycloak và PostgreSQL. Bỏ qua khởi tạo."
+                    "Tài khoản Super Admin đã tồn tại đầy đủ trên cả Keycloak và PostgreSQL. Bỏ qua khởi tạo."
             );
-
             return;
         }
 
-        /*
-         * Đảm bảo tài khoản tồn tại trên Keycloak trước.
-         */
         String keycloakUserId = syncKeycloakAdmin(keycloakExists);
 
-        /*
-         * Sau đó đồng bộ sang PostgreSQL.
-         */
         syncPostgresAdmin(postgresExists, keycloakUserId);
+
+        sendAdminVerificationEmail();
     }
 
-
-    /**
-     * Kiểm tra Super Admin đã tồn tại trên Keycloak hay chưa.
-     */
     private boolean checkKeycloakAdminExists() {
-
         ApiResponse<Boolean> response =
                 keyCloakService.existsByUsername(adminUsername);
 
@@ -99,43 +84,26 @@ public class InitAdmin implements CommandLineRunner {
                 && Boolean.TRUE.equals(response.getData());
     }
 
-
-    /**
-     * Kiểm tra Super Admin đã tồn tại trong PostgreSQL hay chưa.
-     */
     private boolean checkPostgresAdminExists() {
-
         return userRepository
                 .findByUsername(adminUsername)
                 .isPresent();
     }
 
-
-    /**
-     * Đảm bảo Super Admin tồn tại trên Keycloak.
-     *
-     * Không gửi email xác thực ở bước này.
-     *
-     * emailVerified = false
-     * và admin có thể xác thực email sau thông qua flow
-     * xác thực email của hệ thống.
-     */
     private String syncKeycloakAdmin(boolean exists) {
-
         if (exists) {
-
             log.info(
-                    "Tài khoản Super Admin đã tồn tại trên Keycloak. "
-                            + "Lấy Keycloak ID..."
+                    "Tài khoản Super Admin đã tồn tại trên Keycloak. Lấy Keycloak ID..."
             );
 
-            ApiResponse<String> idResponse =
-                    keyCloakService.findUserIdByUsername(adminUsername);
+            ApiResponse<UserRepresentation> response =
+                    keyCloakService.findByUsername(adminUsername);
 
-            if (idResponse.isSuccess()
-                    && idResponse.getData() != null) {
+            if (response.isSuccess()
+                    && response.getData() != null
+                    && response.getData().getId() != null) {
 
-                return idResponse.getData();
+                return response.getData().getId();
             }
 
             throw new IllegalStateException(
@@ -144,77 +112,96 @@ public class InitAdmin implements CommandLineRunner {
             );
         }
 
-
         log.info(
-                "Tạo tài khoản Super Admin mới trên Keycloak. "
-                        + "Không gửi email xác thực."
+                "Tạo tài khoản Super Admin mới trên Keycloak."
         );
 
-        /*
-         * createAndConfigureUser() hiện tại của bạn:
-         *
-         * 1. Tạo user
-         * 2. Set password
-         * 3. Assign role
-         *
-         * Không thực hiện gửi email xác thực.
-         */
         ApiResponse<String> createResponse =
-                keyCloakService.createAndConfigureUser(
+                keyCloakService.createUser(
                         adminUsername,
                         adminEmail,
-                        adminFullName,
+                        adminFullName
+                );
+
+        if (!createResponse.isSuccess()
+                || createResponse.getData() == null) {
+
+            throw new IllegalStateException(
+                    "Không thể tạo Super Admin trên Keycloak: "
+                            + createResponse.getErrorDetails()
+            );
+        }
+
+        String keycloakUserId = createResponse.getData();
+
+        ApiResponse<Void> passwordResponse =
+                keyCloakService.setPassword(
+                        keycloakUserId,
                         adminPassword,
+                        false
+                );
+
+        if (!passwordResponse.isSuccess()) {
+            throw new IllegalStateException(
+                    "Không thể cấu hình mật khẩu Super Admin trên Keycloak: "
+                            + passwordResponse.getErrorDetails()
+            );
+        }
+
+        ApiResponse<Void> roleResponse =
+                keyCloakService.assignRealmRole(
+                        keycloakUserId,
                         adminRole
                 );
 
-        if (createResponse.isSuccess()
-                && createResponse.getData() != null) {
-
-            return createResponse.getData();
+        if (!roleResponse.isSuccess()) {
+            throw new IllegalStateException(
+                    "Không thể gán role Super Admin trên Keycloak: "
+                            + roleResponse.getErrorDetails()
+            );
         }
 
-        throw new IllegalStateException(
-                "Không thể khởi tạo Super Admin trên Keycloak: "
-                        + createResponse.getErrorDetails()
+        return keycloakUserId;
+    }
+
+    private void sendAdminVerificationEmail() {
+        SendVerificationEmailRequest request =
+                new SendVerificationEmailRequest();
+
+        request.setToEmail(adminEmail);
+
+        ApiResponse<Void> response =
+                mailService.sendVerificationEmail(request);
+
+        if (!response.isSuccess()) {
+            throw new IllegalStateException(
+                    "Không thể gửi email xác thực Super Admin: "
+                            + response.getErrorDetails()
+            );
+        }
+
+        log.info(
+                "Đã gửi email xác thực Super Admin tới {}",
+                adminEmail
         );
     }
 
-
-    /**
-     * Đồng bộ Super Admin từ Keycloak sang PostgreSQL.
-     */
     private void syncPostgresAdmin(
             boolean exists,
             String keycloakUserId
     ) {
-
         if (exists) {
-
             log.info(
-                    "Tài khoản Super Admin đã tồn tại "
-                            + "trong cơ sở dữ liệu PostgreSQL."
+                    "Tài khoản Super Admin đã tồn tại trong PostgreSQL."
             );
-
             return;
         }
 
-
         log.info(
-                "Đồng bộ Super Admin từ Keycloak sang PostgreSQL. "
-                        + "Keycloak UUID: {}",
+                "Đồng bộ Super Admin từ Keycloak sang PostgreSQL. Keycloak UUID: {}",
                 keycloakUserId
         );
 
-
-        /*
-         * Lấy thông tin user thực tế từ Keycloak.
-         *
-         * Mục đích:
-         * - Lấy createdTimestamp từ Keycloak
-         * - Lấy emailVerified thực tế
-         * - Tránh tự tạo createdAt bằng thời gian của PostgreSQL
-         */
         ApiResponse<UserRepresentation> keycloakUserResponse =
                 keyCloakService.findByUsername(adminUsername);
 
@@ -226,70 +213,48 @@ public class InitAdmin implements CommandLineRunner {
             );
         }
 
-
         UserRepresentation keycloakUser =
                 keycloakUserResponse.getData();
 
-
-        /*
-         * Keycloak trả createdTimestamp dạng milliseconds.
-         *
-         * Ví dụ:
-         * 1758000000000
-         *
-         * -> OffsetDateTime UTC
-         */
-        OffsetDateTime createdAt;
+        LocalDateTime createdAt;
 
         if (keycloakUser.getCreatedTimestamp() != null) {
-
-            createdAt = Instant
-                    .ofEpochMilli(keycloakUser.getCreatedTimestamp())
-                    .atOffset(ZoneOffset.UTC);
-
-        } else {
-
-            /*
-             * Trường hợp hiếm Keycloak không trả createdTimestamp.
-             * Không nên để NULL vì PostgreSQL đang NOT NULL.
-             */
-            createdAt = OffsetDateTime.now(ZoneOffset.UTC);
+        createdAt = LocalDateTime.ofInstant(
+                Instant.ofEpochMilli(keycloakUser.getCreatedTimestamp()),
+                ZoneOffset.UTC
+        );
+        }
+        else {
+            createdAt =
+                    LocalDateTime.now(ZoneOffset.UTC);
         }
 
-
-        /*
-         * emailVerified lấy trực tiếp từ Keycloak.
-         *
-         * User mới được tạo bởi hệ thống của bạn:
-         * emailVerified = false
-         *
-         * Không gửi email ngay lúc khởi tạo.
-         */
         boolean emailVerified =
-                Boolean.TRUE.equals(keycloakUser.isEmailVerified());
+                Boolean.TRUE.equals(
+                        keycloakUser.isEmailVerified()
+                );
 
-
-        User adminUser = User.builder()
-                .id(keycloakUserId)
-                .username(adminUsername)
-                .email(adminEmail)
-                .fullName(adminFullName)
-                .phoneNumber(adminPhone)
-                .roleName(adminRole)
-                .isActive(
-                        Boolean.TRUE.equals(keycloakUser.isEnabled())
-                )
-                .emailVerified(emailVerified)
-                .createdAt(createdAt)
-                .build();
-
+        User adminUser =
+                User.builder()
+                        .id(keycloakUserId)
+                        .username(adminUsername)
+                        .email(adminEmail)
+                        .fullName(adminFullName)
+                        .phoneNumber(adminPhone)
+                        .roleName(adminRole)
+                        .isActive(
+                                Boolean.TRUE.equals(
+                                        keycloakUser.isEnabled()
+                                )
+                        )
+                        .emailVerified(emailVerified)
+                        .createdAt(createdAt)
+                        .build();
 
         userRepository.save(adminUser);
 
-
         log.info(
-                "Khởi tạo tài khoản Super Admin mặc định hoàn tất. "
-                        + "username={}, emailVerified={}",
+                "Khởi tạo tài khoản Super Admin mặc định hoàn tất. username={}, emailVerified={}",
                 adminUsername,
                 emailVerified
         );

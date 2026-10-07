@@ -1,25 +1,19 @@
 package com.network_monitor.portal_service.service.impl;
 
-import com.network_monitor.portal_service.model.dto.response.ApiResponse;
-import com.network_monitor.portal_service.model.dto.response.RoleResponse;
-import com.network_monitor.portal_service.model.dto.response.TokenResponse;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
 import com.network_monitor.portal_service.service.KeyCloakService;
 import com.network_monitor.portal_service.util.NameUtils;
-
 import jakarta.ws.rs.core.Response;
-
 import lombok.extern.slf4j.Slf4j;
-
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
-
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -57,14 +51,8 @@ public class KeyCloakServiceImpl implements KeyCloakService {
     @Value("${keycloak.user-client-id}")
     private String userClientId;
 
-
-    // ============================================================
-    // KEYCLOAK INSTANCE
-    // ============================================================
-
     @Override
     public Keycloak getKeycloakInstance() {
-
         return KeycloakBuilder.builder()
                 .serverUrl(serverUrl)
                 .realm("master")
@@ -74,34 +62,23 @@ public class KeyCloakServiceImpl implements KeyCloakService {
                 .build();
     }
 
-
     @Override
     public RealmResource getRealmResource() {
-
         return getKeycloakInstance()
                 .realm(realm);
     }
 
-
     @Override
     public UsersResource getUsersResource() {
-
         return getRealmResource()
                 .users();
     }
-
-
-    // ============================================================
-    // FIND USER BY USERNAME
-    // ============================================================
 
     @Override
     public ApiResponse<Boolean> existsByUsername(
             String username
     ) {
-
         try {
-
             List<UserRepresentation> users =
                     getUsersResource()
                             .searchByUsername(username, true);
@@ -112,7 +89,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
             );
 
         } catch (Exception e) {
-
             log.error(
                     "Lỗi kiểm tra username {}: {}",
                     username,
@@ -126,20 +102,18 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
-
     @Override
     public ApiResponse<UserRepresentation> findByUsername(
             String username
     ) {
-
         try {
-
             List<UserRepresentation> users =
                     getUsersResource()
                             .searchByUsername(username, true);
 
             Optional<UserRepresentation> user =
-                    users.stream().findFirst();
+                    users.stream()
+                            .findFirst();
 
             return user
                     .map(userRepresentation ->
@@ -158,7 +132,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
                     );
 
         } catch (Exception e) {
-
             log.error(
                     "Lỗi tìm kiếm user {}: {}",
                     username,
@@ -172,18 +145,11 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
-
-    // ============================================================
-    // FIND USER BY EMAIL
-    // ============================================================
-
     @Override
     public ApiResponse<UserRepresentation> findByEmail(
             String email
     ) {
-
         try {
-
             List<UserRepresentation> users =
                     getUsersResource()
                             .searchByEmail(email, true);
@@ -215,7 +181,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
                     );
 
         } catch (Exception e) {
-
             log.error(
                     "Lỗi tìm kiếm user theo email {}: {}",
                     email,
@@ -229,69 +194,11 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
-
-    // ============================================================
-    // FIND USER ID
-    // ============================================================
-
-    @Override
-    public ApiResponse<String> findUserIdByUsername(
-            String username
-    ) {
-
-        ApiResponse<UserRepresentation> response =
-                findByUsername(username);
-
-        if (response.isSuccess()
-                && response.getData() != null) {
-
-            return ApiResponse.success(
-                    "Lấy ID người dùng thành công",
-                    response.getData().getId()
-            );
-        }
-
-        return ApiResponse.error(
-                "Không lấy được ID người dùng",
-                response.getErrorDetails()
-        );
-    }
-
-
-    @Override
-    public ApiResponse<String> findUserIdByEmail(
-            String email
-    ) {
-
-        ApiResponse<UserRepresentation> response =
-                findByEmail(email);
-
-        if (response.isSuccess()
-                && response.getData() != null) {
-
-            return ApiResponse.success(
-                    "Lấy ID người dùng theo email thành công",
-                    response.getData().getId()
-            );
-        }
-
-        return ApiResponse.error(
-                "Không lấy được ID người dùng",
-                response.getErrorDetails()
-        );
-    }
-
-
-    // ============================================================
-    // LOGIN
-    // ============================================================
-
     @Override
     public ApiResponse<TokenResponse> login(
             String username,
             String password
     ) {
-
         String tokenUrl =
                 serverUrl
                         + "/realms/"
@@ -311,10 +218,25 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         MultiValueMap<String, String> map =
                 new LinkedMultiValueMap<>();
 
-        map.add("grant_type", "password");
-        map.add("client_id", userClientId);
-        map.add("username", username);
-        map.add("password", password);
+        map.add(
+                "grant_type",
+                "password"
+        );
+
+        map.add(
+                "client_id",
+                userClientId
+        );
+
+        map.add(
+                "username",
+                username
+        );
+
+        map.add(
+                "password",
+                password
+        );
 
         HttpEntity<MultiValueMap<String, String>> request =
                 new HttpEntity<>(
@@ -323,7 +245,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
                 );
 
         try {
-
             ResponseEntity<TokenResponse> response =
                     restTemplate.postForEntity(
                             tokenUrl,
@@ -337,7 +258,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
             );
 
         } catch (Exception e) {
-
             log.error(
                     "Login failed for user {}: {}",
                     username,
@@ -351,16 +271,10 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
-
-    // ============================================================
-    // REFRESH TOKEN
-    // ============================================================
-
     @Override
     public ApiResponse<TokenResponse> refreshToken(
             String refreshToken
     ) {
-
         String tokenUrl =
                 serverUrl
                         + "/realms/"
@@ -380,9 +294,20 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         MultiValueMap<String, String> map =
                 new LinkedMultiValueMap<>();
 
-        map.add("grant_type", "refresh_token");
-        map.add("client_id", userClientId);
-        map.add("refresh_token", refreshToken);
+        map.add(
+                "grant_type",
+                "refresh_token"
+        );
+
+        map.add(
+                "client_id",
+                userClientId
+        );
+
+        map.add(
+                "refresh_token",
+                refreshToken
+        );
 
         HttpEntity<MultiValueMap<String, String>> request =
                 new HttpEntity<>(
@@ -391,7 +316,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
                 );
 
         try {
-
             ResponseEntity<TokenResponse> response =
                     restTemplate.postForEntity(
                             tokenUrl,
@@ -405,7 +329,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
             );
 
         } catch (Exception e) {
-
             log.error(
                     "Refresh token failed: {}",
                     e.getMessage()
@@ -418,16 +341,10 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
-
-    // ============================================================
-    // LOGOUT
-    // ============================================================
-
     @Override
     public ApiResponse<Void> logout(
             String refreshToken
     ) {
-
         String logoutUrl =
                 serverUrl
                         + "/realms/"
@@ -447,8 +364,15 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         MultiValueMap<String, String> map =
                 new LinkedMultiValueMap<>();
 
-        map.add("client_id", userClientId);
-        map.add("refresh_token", refreshToken);
+        map.add(
+                "client_id",
+                userClientId
+        );
+
+        map.add(
+                "refresh_token",
+                refreshToken
+        );
 
         HttpEntity<MultiValueMap<String, String>> request =
                 new HttpEntity<>(
@@ -457,15 +381,10 @@ public class KeyCloakServiceImpl implements KeyCloakService {
                 );
 
         try {
-
             restTemplate.postForEntity(
                     logoutUrl,
                     request,
                     String.class
-            );
-
-            log.info(
-                    "Logout successfully on Keycloak"
             );
 
             return ApiResponse.success(
@@ -473,7 +392,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
             );
 
         } catch (Exception e) {
-
             log.error(
                     "Logout failed on Keycloak: {}",
                     e.getMessage()
@@ -486,25 +404,21 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
-
-    // ============================================================
-    // CREATE USER
-    // ============================================================
-
     @Override
     public ApiResponse<String> createUser(
             String username,
             String email,
             String fullName
     ) {
-
         try {
-
             String[] nameParts =
                     NameUtils.splitFullName(fullName);
 
-            String lastName = nameParts[0];
-            String firstName = nameParts[1];
+            String lastName =
+                    nameParts[0];
+
+            String firstName =
+                    nameParts[1];
 
             UserRepresentation user =
                     new UserRepresentation();
@@ -521,7 +435,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
                             .create(user);
 
             if (response.getStatus() != 201) {
-
                 log.error(
                         "Failed to create user {} in Keycloak. Status: {}",
                         username,
@@ -539,18 +452,17 @@ public class KeyCloakServiceImpl implements KeyCloakService {
                     response.getLocation()
                             .getPath();
 
-            String createdUserId =
+            String userId =
                     path.substring(
                             path.lastIndexOf('/') + 1
                     );
 
             return ApiResponse.success(
                     "Tạo user trên Keycloak thành công",
-                    createdUserId
+                    userId
             );
 
         } catch (Exception e) {
-
             log.error(
                     "Lỗi tạo user {}: {}",
                     username,
@@ -564,20 +476,13 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
-
-    // ============================================================
-    // SET PASSWORD
-    // ============================================================
-
     @Override
     public ApiResponse<Void> setPassword(
             String userId,
             String password,
             boolean temporary
     ) {
-
         try {
-
             CredentialRepresentation credential =
                     new CredentialRepresentation();
 
@@ -601,7 +506,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
             );
 
         } catch (Exception e) {
-
             log.error(
                     "Lỗi đặt mật khẩu user {}: {}",
                     userId,
@@ -615,19 +519,49 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
+    @Override
+    public ApiResponse<Void> setEmailVerified(
+            String userId,
+            boolean verified
+    ) {
+        try {
+            UserResource userResource =
+                    getUsersResource()
+                            .get(userId);
 
-    // ============================================================
-    // ASSIGN REALM ROLE
-    // ============================================================
+            UserRepresentation user =
+                    userResource.toRepresentation();
+
+            user.setEmailVerified(verified);
+
+            userResource.update(user);
+
+            return ApiResponse.success(
+                    verified
+                            ? "Xác thực email trên Keycloak thành công"
+                            : "Hủy xác thực email trên Keycloak thành công"
+            );
+
+        } catch (Exception e) {
+            log.error(
+                    "Lỗi cập nhật emailVerified user {}: {}",
+                    userId,
+                    e.getMessage()
+            );
+
+            return ApiResponse.error(
+                    "Cập nhật trạng thái xác thực email trên Keycloak thất bại",
+                    e.getMessage()
+            );
+        }
+    }
 
     @Override
     public ApiResponse<Void> assignRealmRole(
             String userId,
             String roleName
     ) {
-
         try {
-
             RoleRepresentation role =
                     getRealmResource()
                             .roles()
@@ -652,7 +586,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
             );
 
         } catch (Exception e) {
-
             log.error(
                     "Lỗi gán role cho user {}: {}",
                     userId,
@@ -666,127 +599,14 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
-
-    // ============================================================
-    // CREATE AND CONFIGURE USER
-    // ============================================================
-
     @Override
-    public ApiResponse<String> createAndConfigureUser(
-            String username,
-            String email,
-            String fullName,
-            String password,
-            String roleName
-    ) {
-
-        ApiResponse<String> createResponse =
-                createUser(
-                        username,
-                        email,
-                        fullName
-                );
-
-        if (!createResponse.isSuccess()) {
-            return createResponse;
-        }
-
-        String userId =
-                createResponse.getData();
-
-        ApiResponse<Void> setPwdResponse =
-                setPassword(
-                        userId,
-                        password,
-                        false
-                );
-
-        if (!setPwdResponse.isSuccess()) {
-
-            return ApiResponse.error(
-                    "Cấu hình người dùng thất bại",
-                    setPwdResponse.getErrorDetails()
-            );
-        }
-
-        if (roleName != null
-                && !roleName.isBlank()) {
-
-            ApiResponse<Void> assignRoleResponse =
-                    assignRealmRole(
-                            userId,
-                            roleName
-                    );
-
-            if (!assignRoleResponse.isSuccess()) {
-
-                return ApiResponse.error(
-                        "Cấu hình role thất bại",
-                        assignRoleResponse.getErrorDetails()
-                );
-            }
-        }
-
-        return ApiResponse.success(
-                "Khởi tạo và cấu hình tài khoản thành công",
-                userId
-        );
-    }
-
-
-    // ============================================================
-    // CHANGE PASSWORD
-    // ============================================================
-
-    @Override
-    public ApiResponse<Void> changePassword(
+    public ApiResponse<Void> updateUser(
             String userId,
             String username,
-            String currentPassword,
-            String newPassword
-    ) {
-
-        ApiResponse<TokenResponse> loginCheck =
-                login(
-                        username,
-                        currentPassword
-                );
-
-        if (!loginCheck.isSuccess()) {
-
-            return ApiResponse.error(
-                    "Đổi mật khẩu thất bại",
-                    "Mật khẩu hiện tại không chính xác!"
-            );
-        }
-
-        return setPassword(
-                userId,
-                newPassword,
-                false
-        );
-    }
-
-
-    // ============================================================
-    // UPDATE USER
-    // ============================================================
-
-    @Override
-    public ApiResponse<Void> updateKeycloakUser(
-            String userId,
             String email,
             String fullName
     ) {
-
         try {
-
-            String[] nameParts =
-                    NameUtils.splitFullName(fullName);
-
-            String lastName = nameParts[0];
-            String firstName = nameParts[1];
-
             UserResource userResource =
                     getUsersResource()
                             .get(userId);
@@ -794,29 +614,47 @@ public class KeyCloakServiceImpl implements KeyCloakService {
             UserRepresentation user =
                     userResource.toRepresentation();
 
+            // Cập nhật Username nếu có thay đổi
+            if (username != null
+                    && !username.isBlank()
+                    && !username.equals(user.getUsername())) {
+                user.setUsername(username);
+            }
+
+            // Cập nhật Email nếu có thay đổi
             if (email != null
-                    && !email.equals(user.getEmail())) {
+                    && !email.isBlank()
+                    && !email.equalsIgnoreCase(
+                            user.getEmail()
+                    )) {
 
                 user.setEmail(email);
                 user.setEmailVerified(false);
             }
 
-            user.setFirstName(firstName);
-            user.setLastName(lastName);
+            // Cập nhật FullName nếu có thay đổi
+            if (fullName != null
+                    && !fullName.isBlank()) {
+
+                String[] nameParts =
+                        NameUtils.splitFullName(fullName);
+
+                user.setFirstName(
+                        nameParts[1]
+                );
+
+                user.setLastName(
+                        nameParts[0]
+                );
+            }
 
             userResource.update(user);
 
-            log.info(
-                    "Cập nhật thông tin Keycloak user {} thành công",
-                    userId
-            );
-
             return ApiResponse.success(
-                    "Cập nhật thông tin trên Keycloak thành công"
+                    "Cập nhật thông tin Keycloak user thành công"
             );
 
         } catch (Exception e) {
-
             log.error(
                     "Lỗi cập nhật Keycloak user {}: {}",
                     userId,
@@ -829,20 +667,13 @@ public class KeyCloakServiceImpl implements KeyCloakService {
             );
         }
     }
-
-
-    // ============================================================
-    // UPDATE ROLE
-    // ============================================================
-
+    
     @Override
     public ApiResponse<Void> updateUserRole(
             String userId,
-            String newRoleName
+            String roleName
     ) {
-
         try {
-
             UserResource userResource =
                     getUsersResource()
                             .get(userId);
@@ -854,7 +685,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
                             .listAll();
 
             if (!currentRoles.isEmpty()) {
-
                 userResource
                         .roles()
                         .realmLevel()
@@ -864,7 +694,7 @@ public class KeyCloakServiceImpl implements KeyCloakService {
             RoleRepresentation newRole =
                     getRealmResource()
                             .roles()
-                            .get(newRoleName)
+                            .get(roleName)
                             .toRepresentation();
 
             userResource
@@ -874,18 +704,11 @@ public class KeyCloakServiceImpl implements KeyCloakService {
                             Collections.singletonList(newRole)
                     );
 
-            log.info(
-                    "Cập nhật role cho user {} thành {}",
-                    userId,
-                    newRoleName
-            );
-
             return ApiResponse.success(
                     "Cập nhật role thành công"
             );
 
         } catch (Exception e) {
-
             log.error(
                     "Lỗi cập nhật role user {}: {}",
                     userId,
@@ -899,19 +722,12 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
-
-    // ============================================================
-    // ENABLE / DISABLE USER
-    // ============================================================
-
     @Override
     public ApiResponse<Void> setUserEnabled(
             String userId,
             boolean enabled
     ) {
-
         try {
-
             UserResource userResource =
                     getUsersResource()
                             .get(userId);
@@ -923,20 +739,13 @@ public class KeyCloakServiceImpl implements KeyCloakService {
 
             userResource.update(user);
 
-            log.info(
-                    "Cập nhật trạng thái Keycloak user {} thành enabled={}",
-                    userId,
-                    enabled
-            );
-
             return ApiResponse.success(
                     "Cập nhật trạng thái tài khoản thành công"
             );
 
         } catch (Exception e) {
-
             log.error(
-                    "Lỗi cập nhật trạng thái Keycloak user {}: {}",
+                    "Lỗi cập nhật trạng thái user {}: {}",
                     userId,
                     e.getMessage()
             );
@@ -948,35 +757,22 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
-
-    // ============================================================
-    // DELETE USER
-    // ============================================================
-
     @Override
     public ApiResponse<Void> deleteUser(
             String userId
     ) {
-
         try {
-
             UserResource userResource =
                     getUsersResource()
                             .get(userId);
 
             userResource.remove();
 
-            log.info(
-                    "Xóa thành công user {} khỏi Keycloak",
-                    userId
-            );
-
             return ApiResponse.success(
                     "Xóa tài khoản trên Keycloak thành công"
             );
 
         } catch (Exception e) {
-
             log.error(
                     "Lỗi xóa user {} trên Keycloak: {}",
                     userId,
@@ -990,33 +786,28 @@ public class KeyCloakServiceImpl implements KeyCloakService {
         }
     }
 
-
-    // ============================================================
-    // GET ALL REALM ROLES
-    // ============================================================
-
     @Override
     public ApiResponse<List<RoleResponse>> getAllRealmRoles() {
-
         try {
-
             List<RoleResponse> roles =
                     getRealmResource()
                             .roles()
                             .list()
                             .stream()
-                            .filter(role ->
-                                    role.getName() != null
-                                            && role.getName()
-                                            .startsWith("ROLE_")
+                            .filter(
+                                    role ->
+                                            role.getName() != null
+                                                    && role.getName()
+                                                    .startsWith("ROLE_")
                             )
-                            .map(role ->
-                                    RoleResponse.builder()
-                                            .name(role.getName())
-                                            .description(
-                                                    role.getDescription()
-                                            )
-                                            .build()
+                            .map(
+                                    role ->
+                                            RoleResponse.builder()
+                                                    .name(role.getName())
+                                                    .description(
+                                                            role.getDescription()
+                                                    )
+                                                    .build()
                             )
                             .collect(Collectors.toList());
 
@@ -1026,7 +817,6 @@ public class KeyCloakServiceImpl implements KeyCloakService {
             );
 
         } catch (Exception e) {
-
             log.error(
                     "Lỗi lấy danh sách roles: {}",
                     e.getMessage()

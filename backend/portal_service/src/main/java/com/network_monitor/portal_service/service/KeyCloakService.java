@@ -1,8 +1,7 @@
 package com.network_monitor.portal_service.service;
 
-import com.network_monitor.portal_service.model.dto.response.ApiResponse;
-import com.network_monitor.portal_service.model.dto.response.RoleResponse;
-import com.network_monitor.portal_service.model.dto.response.TokenResponse;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UsersResource;
@@ -23,10 +22,6 @@ public interface KeyCloakService {
     ApiResponse<UserRepresentation> findByUsername(String username);
 
     ApiResponse<UserRepresentation> findByEmail(String email);
-
-    ApiResponse<String> findUserIdByUsername(String username);
-
-    ApiResponse<String> findUserIdByEmail(String email);
 
     ApiResponse<TokenResponse> login(
             String username,
@@ -53,35 +48,26 @@ public interface KeyCloakService {
             boolean temporary
     );
 
+    ApiResponse<Void> setEmailVerified(
+            String userId,
+            boolean verified
+    );
+
     ApiResponse<Void> assignRealmRole(
             String userId,
             String roleName
     );
 
-    ApiResponse<String> createAndConfigureUser(
-            String username,
-            String email,
-            String fullName,
-            String password,
-            String roleName
-    );
-
-    ApiResponse<Void> changePassword(
+    ApiResponse<Void> updateUser(
             String userId,
             String username,
-            String currentPassword,
-            String newPassword
-    );
-
-    ApiResponse<Void> updateKeycloakUser(
-            String userId,
             String email,
             String fullName
     );
 
     ApiResponse<Void> updateUserRole(
             String userId,
-            String newRoleName
+            String roleName
     );
 
     ApiResponse<Void> setUserEnabled(

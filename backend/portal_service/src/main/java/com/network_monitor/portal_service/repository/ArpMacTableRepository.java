@@ -11,15 +11,30 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 @Repository
-public interface ArpMacTableRepository extends JpaRepository<ArpMacTable, Long> {
+public interface ArpMacTableRepository
+        extends JpaRepository<ArpMacTable, Long> {
 
-    Optional<ArpMacTable> findByIpAddressAndDeviceId(String ipAddress, Long deviceId);
+    Optional<ArpMacTable> findByIpAddressAndDeviceId(
+            String ipAddress,
+            Long deviceId
+    );
 
-    Optional<ArpMacTable> findByMacAddressAndDeviceId(String macAddress, Long deviceId);
+    Optional<ArpMacTable> findByMacAddressAndDeviceId(
+            String macAddress,
+            Long deviceId
+    );
 
-    @Query("SELECT a FROM ArpMacTable a WHERE " +
-           "(:keyword IS NULL OR LOWER(a.ipAddress) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-           "LOWER(a.macAddress) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-           "LOWER(a.interfaceName) LIKE LOWER(CONCAT('%', :keyword, '%')))")
-    Page<ArpMacTable> searchArpMacEntries(@Param("keyword") String keyword, Pageable pageable);
+    @Query("""
+        SELECT a
+        FROM ArpMacTable a
+        WHERE (
+            :keyword IS NULL
+            OR LOWER(a.ipAddress) LIKE LOWER(CONCAT('%', :keyword, '%'))
+            OR LOWER(a.macAddress) LIKE LOWER(CONCAT('%', :keyword, '%'))
+        )
+        """)
+    Page<ArpMacTable> searchArpMacEntries(
+            @Param("keyword") String keyword,
+            Pageable pageable
+    );
 }

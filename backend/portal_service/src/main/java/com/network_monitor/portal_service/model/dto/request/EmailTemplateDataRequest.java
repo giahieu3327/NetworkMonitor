@@ -1,4 +1,4 @@
-package com.network_monitor.portal_service.dto.request;
+package com.network_monitor.portal_service.model.dto.request;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,15 +13,15 @@ public class EmailTemplateDataRequest {
 
     private String title;
 
-    private String userName;
-
     private String message;
 
     private String otp;
 
-    private String verificationLink;
+    private String link;
 
     private String buttonText;
 
-    private int expireMinutes;
+    private String expireMessage;
+
+    private String footerMessage;
 }

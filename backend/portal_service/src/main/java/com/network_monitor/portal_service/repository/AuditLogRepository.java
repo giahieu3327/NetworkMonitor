@@ -11,13 +11,20 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 
-    Page<AuditLog> findByUserIdOrderByTimestampDesc(String userId, Pageable pageable);
+    Page<AuditLog> findByUserIdOrderByTimestampDesc(
+            String userId,
+            Pageable pageable
+    );
 
-    @Query("SELECT a FROM AuditLog a WHERE " +
-           "(:userId IS NULL OR a.user.id = :userId) AND " +
-           "(:module IS NULL OR a.module = :module)")
+    @Query("""
+        SELECT a
+        FROM AuditLog a
+        WHERE (:userId IS NULL OR a.user.id = :userId)
+          AND (:module IS NULL OR a.module = :module)
+        """)
     Page<AuditLog> filterAuditLogs(
             @Param("userId") String userId,
             @Param("module") String module,
-            Pageable pageable);
+            Pageable pageable
+    );
 }

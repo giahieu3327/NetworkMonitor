@@ -1,15 +1,14 @@
 package com.network_monitor.portal_service.controller;
 
-import com.network_monitor.portal_service.model.dto.request.DeviceCredentialRequest;
-import com.network_monitor.portal_service.model.dto.response.ApiResponse;
-import com.network_monitor.portal_service.model.dto.response.DeviceCredentialResponse;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
 import com.network_monitor.portal_service.service.DeviceCredentialService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
 @RestController

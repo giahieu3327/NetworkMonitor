@@ -1,12 +1,10 @@
 package com.network_monitor.portal_service.service.impl;
 
-import com.network_monitor.portal_service.model.dto.request.OidConfigRequest;
-import com.network_monitor.portal_service.model.dto.response.ApiResponse;
-import com.network_monitor.portal_service.model.dto.response.OidConfigResponse;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
 import com.network_monitor.portal_service.model.entity.Device;
 import com.network_monitor.portal_service.model.entity.DeviceInterface;
 import com.network_monitor.portal_service.model.entity.OidConfig;
-import com.network_monitor.portal_service.model.enums.OidDataType;
 import com.network_monitor.portal_service.repository.DeviceInterfaceRepository;
 import com.network_monitor.portal_service.repository.DeviceRepository;
 import com.network_monitor.portal_service.repository.OidConfigRepository;
@@ -41,7 +39,7 @@ public class OidConfigServiceImpl implements OidConfigService {
                         .metricScope(req.getMetricScope())
                         .metricType(req.getMetricType())
                         .oidPattern(req.getOidPattern())
-                        .dataType(req.getDataType() != null ? req.getDataType() : OidDataType.INTEGER)
+                        .dataType(req.getDataType() != null ? req.getDataType() : "INTEGER")
                         .multiplier(req.getMultiplier() != null ? req.getMultiplier() : 1.0)
                         .deviceType(req.getDeviceType())
                         .description(req.getDescription())
@@ -51,12 +49,15 @@ public class OidConfigServiceImpl implements OidConfigService {
                     Device device = deviceRepository.findById(req.getDeviceId())
                             .orElseThrow(() -> new RuntimeException("Không tìm thấy thiết bị với ID: " + req.getDeviceId()));
                     builder.device(device);
-                }
 
-                if (req.getInterfaceId() != null) {
-                    DeviceInterface deviceInterface = interfaceRepository.findById(req.getInterfaceId())
-                            .orElseThrow(() -> new RuntimeException("Không tìm thấy cổng giao tiếp với ID: " + req.getInterfaceId()));
-                    builder.deviceInterface(deviceInterface);
+                    // Khóa chính tổng hợp của DeviceInterface gồm deviceId (Long) và interfaceIndex (Integer)
+                    if (req.getInterfaceId() != null) {
+                        DeviceInterface.DeviceInterfaceId interfaceCompositeId = 
+                                new DeviceInterface.DeviceInterfaceId(req.getDeviceId(), req.getInterfaceId().intValue());
+                        DeviceInterface deviceInterface = interfaceRepository.findById(interfaceCompositeId)
+                                .orElseThrow(() -> new RuntimeException("Không tìm thấy cổng giao tiếp với ID: " + req.getInterfaceId()));
+                        builder.deviceInterface(deviceInterface);
+                    }
                 }
 
                 configsToSave.add(builder.build());
@@ -89,15 +90,18 @@ public class OidConfigServiceImpl implements OidConfigService {
                 Device device = deviceRepository.findById(request.getDeviceId())
                         .orElseThrow(() -> new RuntimeException("Không tìm thấy thiết bị với ID: " + request.getDeviceId()));
                 config.setDevice(device);
+
+                if (request.getInterfaceId() != null) {
+                    DeviceInterface.DeviceInterfaceId interfaceCompositeId = 
+                            new DeviceInterface.DeviceInterfaceId(request.getDeviceId(), request.getInterfaceId().intValue());
+                    DeviceInterface deviceInterface = interfaceRepository.findById(interfaceCompositeId)
+                            .orElseThrow(() -> new RuntimeException("Không tìm thấy cổng giao tiếp với ID: " + request.getInterfaceId()));
+                    config.setDeviceInterface(deviceInterface);
+                } else {
+                    config.setDeviceInterface(null);
+                }
             } else {
                 config.setDevice(null);
-            }
-
-            if (request.getInterfaceId() != null) {
-                DeviceInterface deviceInterface = interfaceRepository.findById(request.getInterfaceId())
-                        .orElseThrow(() -> new RuntimeException("Không tìm thấy cổng giao tiếp với ID: " + request.getInterfaceId()));
-                config.setDeviceInterface(deviceInterface);
-            } else {
                 config.setDeviceInterface(null);
             }
 
@@ -153,11 +157,17 @@ public class OidConfigServiceImpl implements OidConfigService {
         Device device = deviceRepository.findById(deviceId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy thiết bị với ID: " + deviceId));
 
-        List<OidConfig> configs = oidConfigRepository.findActiveOidsForDevice(device.getId(), device.getDeviceType().name());
+        String deviceTypeName = device.getDeviceType() != null ? device.getDeviceType().toString() : null;
+
+        List<OidConfig> configs = oidConfigRepository.findActiveOidsForDevice(device.getId(), deviceTypeName);
         return configs.stream().map(this::mapToResponse).collect(Collectors.toList());
     }
 
     private OidConfigResponse mapToResponse(OidConfig config) {
+        Long interfaceIndex = (config.getDeviceInterface() != null && config.getDeviceInterface().getInterfaceIndex() != null) 
+                ? config.getDeviceInterface().getInterfaceIndex().longValue() 
+                : null;
+
         return OidConfigResponse.builder()
                 .id(config.getId())
                 .metricScope(config.getMetricScope())
@@ -167,7 +177,7 @@ public class OidConfigServiceImpl implements OidConfigService {
                 .multiplier(config.getMultiplier())
                 .deviceType(config.getDeviceType())
                 .deviceId(config.getDevice() != null ? config.getDevice().getId() : null)
-                .interfaceId(config.getDeviceInterface() != null ? config.getDeviceInterface().getId() : null)
+                .interfaceId(interfaceIndex)
                 .isActive(config.getIsActive())
                 .description(config.getDescription())
                 .createdAt(config.getCreatedAt())

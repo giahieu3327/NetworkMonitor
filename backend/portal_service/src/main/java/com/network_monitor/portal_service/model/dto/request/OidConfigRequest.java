@@ -1,7 +1,5 @@
 package com.network_monitor.portal_service.model.dto.request;
 
-import com.network_monitor.portal_service.model.enums.MetricScope;
-import com.network_monitor.portal_service.model.enums.OidDataType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -16,7 +14,7 @@ import lombok.NoArgsConstructor;
 public class OidConfigRequest {
 
     @NotNull(message = "Phạm vi metric không được để trống")
-    private MetricScope metricScope;
+    private String metricScope;
 
     @NotBlank(message = "Loại chỉ số không được để trống")
     private String metricType;
@@ -24,7 +22,7 @@ public class OidConfigRequest {
     @NotBlank(message = "Chuỗi OID pattern không được để trống")
     private String oidPattern;
 
-    private OidDataType dataType;
+    private String dataType;
     private Double multiplier;
     private String deviceType;
     private Long deviceId;

@@ -152,6 +152,8 @@ keycloak:
 app:
   frontend:
     baseurl: ${FRONTEND_BASE_URL:http://localhost:3000}
+  jwt:
+    email-verification-secret: ${APP_JWT_EMAIL_VERIFICATION_SECRET:647c207eaeefb4563df606231bb8e10b1bb5a4c6b2665d40384596f4105f230d}
   admin:
     username: ${APP_ADMIN_USERNAME:admin}
     email: ${APP_ADMIN_EMAIL:admin@monitor.com}

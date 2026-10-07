@@ -2,12 +2,19 @@ package com.network_monitor.portal_service.model.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
+import java.util.Map;
 
 @Entity
 @Table(name = "audit_logs")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class AuditLog {
 
     @Id
@@ -18,19 +25,38 @@ public class AuditLog {
     @JoinColumn(name = "user_id")
     private User user;
 
-    @Column(length = 100, nullable = false)
+    @Column(
+            name = "action",
+            length = 255,
+            nullable = false
+    )
     private String action;
 
-    @Column(length = 50, nullable = false)
+    @Column(
+            name = "module",
+            length = 255,
+            nullable = false
+    )
     private String module;
 
-    @Column(name = "ip_address", length = 45)
+    @Column(
+            name = "ip_address",
+            length = 45
+    )
     private String ipAddress;
 
-    @Column(columnDefinition = "TEXT")
-    private String details;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(
+            name = "details",
+            columnDefinition = "jsonb",
+            nullable = false
+    )
+    private Map<String, Object> details;
 
     @Builder.Default
-    @Column(nullable = false)
-    private OffsetDateTime timestamp = OffsetDateTime.now();
+    @Column(
+            name = "timestamp",
+            nullable = false
+    )
+    private LocalDateTime timestamp = LocalDateTime.now();
 }

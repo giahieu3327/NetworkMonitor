@@ -1,10 +1,8 @@
 package com.network_monitor.portal_service.service.impl;
 
-import com.network_monitor.portal_service.model.dto.request.DeviceRequest;
-import com.network_monitor.portal_service.model.dto.response.ApiResponse;
-import com.network_monitor.portal_service.model.dto.response.DeviceResponse;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
 import com.network_monitor.portal_service.model.entity.Device;
-import com.network_monitor.portal_service.model.enums.DeviceStatus;
 import com.network_monitor.portal_service.repository.DeviceRepository;
 import com.network_monitor.portal_service.service.DeviceService;
 import lombok.RequiredArgsConstructor;
@@ -41,7 +39,7 @@ public class DeviceServiceImpl implements DeviceService {
                         .deviceType(req.getDeviceType())
                         .model(req.getModel())
                         .firmwareVersion(req.getFirmwareVersion())
-                        .status(req.getStatus() != null ? req.getStatus() : DeviceStatus.UP)
+                        .status(req.getStatus() != null ? req.getStatus() : "UP")
                         .build();
 
                 devicesToSave.add(device);

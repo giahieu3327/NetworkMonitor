@@ -1,8 +1,7 @@
 package com.network_monitor.portal_service.service.impl;
 
-import com.network_monitor.portal_service.model.dto.request.DeviceCredentialRequest;
-import com.network_monitor.portal_service.model.dto.response.ApiResponse;
-import com.network_monitor.portal_service.model.dto.response.DeviceCredentialResponse;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
 import com.network_monitor.portal_service.model.entity.Device;
 import com.network_monitor.portal_service.model.entity.DeviceCredential;
 import com.network_monitor.portal_service.repository.DeviceCredentialRepository;
@@ -131,7 +130,7 @@ public class DeviceCredentialServiceImpl implements DeviceCredentialService {
                 .collect(Collectors.toList());
     }
 
-    private void unsetOtherPrimaryCredentials(Long deviceId, com.network_monitor.portal_service.model.enums.ProtocolType protocolType) {
+    private void unsetOtherPrimaryCredentials(Long deviceId, String protocolType) {
         List<DeviceCredential> existingCreds = credentialRepository.findByDeviceId(deviceId);
         for (DeviceCredential cred : existingCreds) {
             if (cred.getProtocolType() == protocolType && Boolean.TRUE.equals(cred.getIsPrimary())) {

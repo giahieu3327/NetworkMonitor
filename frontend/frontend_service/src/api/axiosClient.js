@@ -35,12 +35,20 @@ axiosClient.interceptors.response.use(
         if (!refreshToken) throw new Error('No refresh token');
 
         const res = await axios.post(`${API_BACKEND_URL}/auth/refresh`, { refreshToken });
-        const { access_token, refresh_token: newRefresh } = res.data;
+        
+        // Bổ sung đọc linh hoạt cả camelCase lẫn snake_case từ response backend
+        const resData = res.data?.data ?? res.data;
+        const newAccessToken = resData?.accessToken || resData?.access_token;
+        const newRefreshToken = resData?.refreshToken || resData?.refresh_token;
 
-        localStorage.setItem('access_token', access_token);
-        if (newRefresh) localStorage.setItem('refresh_token', newRefresh);
+        if (!newAccessToken) throw new Error('Failed to refresh token');
 
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        localStorage.setItem('access_token', newAccessToken);
+        if (newRefreshToken) {
+          localStorage.setItem('refresh_token', newRefreshToken);
+        }
+
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return axiosClient(originalRequest);
       } catch (refreshErr) {
         localStorage.clear();

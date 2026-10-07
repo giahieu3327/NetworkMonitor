@@ -1,83 +1,40 @@
 package com.network_monitor.portal_service.service.impl;
 
-import com.network_monitor.portal_service.dto.request.EmailTemplateDataRequest;
-import com.network_monitor.portal_service.model.dto.request.SendMailRequest;
-import com.network_monitor.portal_service.model.dto.request.SendPasswordResetOtpEmailRequest;
-import com.network_monitor.portal_service.model.dto.request.SendVerificationEmailRequest;
-import com.network_monitor.portal_service.model.dto.request.VerifyEmailTokenRequest;
-import com.network_monitor.portal_service.model.dto.request.VerifyPasswordResetOtpRequest;
-import com.network_monitor.portal_service.model.dto.response.ApiResponse;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
 import com.network_monitor.portal_service.service.MailService;
+import com.network_monitor.portal_service.util.EmailTemplateUtils;
+import com.network_monitor.portal_service.util.JwtTokenUtils;
 import com.network_monitor.portal_service.util.OtpUtils;
-import com.network_monitor.portal_service.util.TokenUtils;
-import com.network_monitor.portal_service.model.entity.User;
-import com.network_monitor.portal_service.model.dto.response.UserResponse;
-import com.network_monitor.portal_service.repository.UserRepository;
-import com.network_monitor.portal_service.service.KeyCloakService;
-import org.keycloak.representations.idm.UserRepresentation;
-import org.springframework.transaction.annotation.Transactional;
-
 import jakarta.mail.internet.MimeMessage;
-
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.InputStreamSource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class MailServiceImpl implements MailService {
 
-    // =========================================================
-    // CONSTANT
-    // =========================================================
+    private static final long EMAIL_VERIFY_EXPIRE_MINUTES = 1440;
+    private static final long PASSWORD_RESET_OTP_EXPIRE_MINUTES = 5;
 
-    private static final int EXPIRE_MINUTES = 5;
+    private static final String PASSWORD_RESET_OTP_PREFIX = "PWD_RESET_OTP:";
 
-    private static final long EXPIRE_SECONDS =
-            EXPIRE_MINUTES * 60L;
+    private static final String EMAIL_VERIFY_TEMPLATE =
+            "templates/email/link-email.html";
 
-    private static final int TOKEN_BYTE_LENGTH = 32;
-
-    private static final String EMAIL_VERIFY_TOKEN_PREFIX =
-            "EMAIL_VERIFY_TOKEN:";
-
-    private static final String PASSWORD_RESET_OTP_PREFIX =
-            "PWD_RESET_OTP:";
-
-    private static final String LINK_TEMPLATE =
-            "templates/email/link-template.html";
-
-    private static final String OTP_TEMPLATE =
-            "templates/email/otp-template.html";
-
-
-    // =========================================================
-    // DEPENDENCY
-    // =========================================================
+    private static final String PASSWORD_RESET_OTP_TEMPLATE =
+            "templates/email/otp-email.html";
 
     private final JavaMailSender mailSender;
-
     private final StringRedisTemplate redisTemplate;
-
-    private final UserRepository userRepository;
-    
-    private final KeyCloakService keyCloakService;
-
-
-    // =========================================================
-    // CONFIG
-    // =========================================================
 
     @Value("${stalwart.system-sender}")
     private String systemSender;
@@ -85,122 +42,86 @@ public class MailServiceImpl implements MailService {
     @Value("${app.frontend.baseurl}")
     private String frontendBaseUrl;
 
-
-    // =========================================================
-    // 1. SEND TEXT EMAIL
-    // =========================================================
+    @Value("${app.jwt.email-verification-secret}")
+    private String emailVerificationSecret;
 
     @Override
-    public ApiResponse<Void> sendTextEmail(
-            SendMailRequest request
-    ) {
-
+    public ApiResponse<Void> sendTextEmail(SendMailRequest request) {
         try {
+            if (request == null
+                    || request.getToEmail() == null
+                    || request.getToEmail().isBlank()) {
+                return ApiResponse.error("Email người nhận không hợp lệ.");
+            }
 
-            MimeMessage message =
-                    mailSender.createMimeMessage();
+            if (request.getSubject() == null
+                    || request.getSubject().isBlank()) {
+                return ApiResponse.error("Tiêu đề email không được để trống.");
+            }
+
+            if (request.getContent() == null) {
+                return ApiResponse.error("Nội dung email không được để trống.");
+            }
+
+            MimeMessage message = mailSender.createMimeMessage();
 
             MimeMessageHelper helper =
-                    new MimeMessageHelper(
-                            message,
-                            false,
-                            StandardCharsets.UTF_8.name()
-                    );
+                    new MimeMessageHelper(message, false, "UTF-8");
 
             helper.setFrom(systemSender);
-
-            helper.setTo(
-                    request.getToEmail()
-            );
-
-            helper.setSubject(
-                    request.getSubject()
-            );
-
-            helper.setText(
-                    request.getContent(),
-                    false
-            );
+            helper.setTo(request.getToEmail());
+            helper.setSubject(request.getSubject());
+            helper.setText(request.getContent(), false);
 
             mailSender.send(message);
 
-            return ApiResponse.success(
-                    "Gửi email thành công."
-            );
+            return ApiResponse.success("Gửi email thành công.");
 
         } catch (Exception e) {
-
-            log.error(
-                    "Send text email failed",
-                    e
-            );
-
             return ApiResponse.error(
-                    "Không thể gửi email."
+                    "Không thể gửi email: " + e.getMessage()
             );
         }
     }
 
-
-    // =========================================================
-    // 2. SEND HTML EMAIL
-    // =========================================================
-
     @Override
-    public ApiResponse<Void> sendHtmlEmail(
-            SendMailRequest request
-    ) {
-
+    public ApiResponse<Void> sendHtmlEmail(SendMailRequest request) {
         try {
+            if (request == null
+                    || request.getToEmail() == null
+                    || request.getToEmail().isBlank()) {
+                return ApiResponse.error("Email người nhận không hợp lệ.");
+            }
 
-            MimeMessage message =
-                    mailSender.createMimeMessage();
+            if (request.getSubject() == null
+                    || request.getSubject().isBlank()) {
+                return ApiResponse.error("Tiêu đề email không được để trống.");
+            }
+
+            if (request.getContent() == null) {
+                return ApiResponse.error("Nội dung email không được để trống.");
+            }
+
+            MimeMessage message = mailSender.createMimeMessage();
 
             MimeMessageHelper helper =
-                    new MimeMessageHelper(
-                            message,
-                            false,
-                            StandardCharsets.UTF_8.name()
-                    );
+                    new MimeMessageHelper(message, false, "UTF-8");
 
             helper.setFrom(systemSender);
-
-            helper.setTo(
-                    request.getToEmail()
-            );
-
-            helper.setSubject(
-                    request.getSubject()
-            );
-
-            helper.setText(
-                    request.getContent(),
-                    true
-            );
+            helper.setTo(request.getToEmail());
+            helper.setSubject(request.getSubject());
+            helper.setText(request.getContent(), true);
 
             mailSender.send(message);
 
-            return ApiResponse.success(
-                    "Gửi email HTML thành công."
-            );
+            return ApiResponse.success("Gửi email thành công.");
 
         } catch (Exception e) {
-
-            log.error(
-                    "Send HTML email failed",
-                    e
-            );
-
             return ApiResponse.error(
-                    "Không thể gửi email HTML."
+                    "Không thể gửi email: " + e.getMessage()
             );
         }
     }
-
-
-    // =========================================================
-    // 3. SEND EMAIL WITH ATTACHMENT
-    // =========================================================
 
     @Override
     public ApiResponse<Void> sendEmailWithAttachment(
@@ -208,730 +129,292 @@ public class MailServiceImpl implements MailService {
             String fileName,
             InputStream fileInputStream
     ) {
-
         try {
+            if (request == null
+                    || request.getToEmail() == null
+                    || request.getToEmail().isBlank()) {
+                return ApiResponse.error("Email người nhận không hợp lệ.");
+            }
 
-            MimeMessage message =
-                    mailSender.createMimeMessage();
+            if (request.getSubject() == null
+                    || request.getSubject().isBlank()) {
+                return ApiResponse.error("Tiêu đề email không được để trống.");
+            }
+
+            if (request.getContent() == null) {
+                return ApiResponse.error("Nội dung email không được để trống.");
+            }
+
+            if (fileName == null || fileName.isBlank()) {
+                return ApiResponse.error("Tên file không hợp lệ.");
+            }
+
+            if (fileInputStream == null) {
+                return ApiResponse.error("File đính kèm không hợp lệ.");
+            }
+
+            MimeMessage message = mailSender.createMimeMessage();
 
             MimeMessageHelper helper =
-                    new MimeMessageHelper(
-                            message,
-                            true,
-                            StandardCharsets.UTF_8.name()
-                    );
+                    new MimeMessageHelper(message, true, "UTF-8");
 
             helper.setFrom(systemSender);
-
-            helper.setTo(
-                    request.getToEmail()
-            );
-
-            helper.setSubject(
-                    request.getSubject()
-            );
-
-            helper.setText(
-                    request.getContent(),
-                    false
-            );
-
+            helper.setTo(request.getToEmail());
+            helper.setSubject(request.getSubject());
+            helper.setText(request.getContent(), true);
             helper.addAttachment(
                     fileName,
-                    fileInputStream
+                    (InputStreamSource) () -> fileInputStream
             );
 
             mailSender.send(message);
 
-            return ApiResponse.success(
-                    "Gửi email kèm file thành công."
-            );
+            return ApiResponse.success("Gửi email thành công.");
 
         } catch (Exception e) {
-
-            log.error(
-                    "Send email with attachment failed",
-                    e
-            );
-
             return ApiResponse.error(
-                    "Không thể gửi email kèm file."
+                    "Không thể gửi email: " + e.getMessage()
             );
         }
     }
-
-
-    // =========================================================
-    // 4. SEND VERIFICATION EMAIL
-    // =========================================================
 
     @Override
     public ApiResponse<Void> sendVerificationEmail(
             SendVerificationEmailRequest request
     ) {
-
         try {
-
-            if (request == null) {
-
-                return ApiResponse.error(
-                        "Request không hợp lệ."
-                );
+            if (request == null
+                    || request.getToEmail() == null
+                    || request.getToEmail().isBlank()) {
+                return ApiResponse.error("Email không hợp lệ.");
             }
 
-            String toEmail =
-                    request.getToEmail();
+            String email = request.getToEmail();
 
-            String userName =
-                    request.getUserName();
-
-            if (
-                    toEmail == null
-                            || toEmail.isBlank()
-            ) {
-
-                return ApiResponse.error(
-                        "Email không được để trống."
-                );
-            }
-
-
-            // -------------------------------------------------
-            // Generate UNIQUE TOKEN
-            // -------------------------------------------------
-
-            String token =
-                    generateUniqueVerificationToken();
-
-
-            // -------------------------------------------------
-            // Redis
-            //
-            // EMAIL_VERIFY_TOKEN:{token}
-            //              ↓
-            //           email
-            //              ↓
-            //          TTL 5 phút
-            // -------------------------------------------------
-
-            String redisKey =
-                    EMAIL_VERIFY_TOKEN_PREFIX + token;
-
-            redisTemplate.opsForValue().set(
-                    redisKey,
-                    toEmail,
-                    EXPIRE_SECONDS,
-                    TimeUnit.SECONDS
+            String token = JwtTokenUtils.generateToken(
+                    email,
+                    emailVerificationSecret,
+                    EMAIL_VERIFY_EXPIRE_MINUTES
             );
-
-
-            // -------------------------------------------------
-            // Verification link
-            // -------------------------------------------------
 
             String verificationLink =
                     frontendBaseUrl
                             + "/verify-email?token="
                             + token;
 
-
-            // -------------------------------------------------
-            // Template DTO
-            // -------------------------------------------------
-
             EmailTemplateDataRequest templateData =
                     EmailTemplateDataRequest.builder()
                             .title("Xác thực email")
-                            .userName(
-                                    userName != null
-                                            ? userName
-                                            : "User"
-                            )
                             .message(
-                                    "Vui lòng nhấn nút bên dưới "
-                                            + "để xác thực địa chỉ email "
-                                            + "của bạn."
+                                    "Vui lòng nhấn vào nút bên dưới để xác thực địa chỉ email của bạn."
                             )
-                            .verificationLink(
-                                    verificationLink
+                            .link(verificationLink)
+                            .buttonText("Xác thực email")
+                            .expireMessage(
+                                    "Liên kết xác thực có hiệu lực trong 24 giờ."
                             )
-                            .buttonText(
-                                    "Xác thực email"
-                            )
-                            .expireMinutes(
-                                    EXPIRE_MINUTES
+                            .footerMessage(
+                                    "Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email."
                             )
                             .build();
 
-
-            // -------------------------------------------------
-            // Render template
-            // -------------------------------------------------
-
             String html =
-                    renderTemplate(
-                            LINK_TEMPLATE,
+                    EmailTemplateUtils.render(
+                            EMAIL_VERIFY_TEMPLATE,
                             templateData
                     );
 
-
-            // -------------------------------------------------
-            // Send
-            // -------------------------------------------------
-
             SendMailRequest mailRequest =
                     SendMailRequest.builder()
-                            .toEmail(toEmail)
+                            .toEmail(email)
                             .subject("Xác thực email")
                             .content(html)
                             .build();
 
-            return sendHtmlEmail(
-                    mailRequest
-            );
+            return sendHtmlEmail(mailRequest);
 
         } catch (Exception e) {
-
-            log.error(
-                    "Send verification email failed",
-                    e
-            );
-
             return ApiResponse.error(
-                    "Không thể gửi email xác thực."
+                    "Không thể gửi email xác thực: " + e.getMessage()
             );
         }
     }
-
-        // =========================================================
-        // 5. VERIFY EMAIL TOKEN
-        // =========================================================
-
-        @Override
-        @Transactional
-        public ApiResponse<String> verifyEmailToken(
-                VerifyEmailTokenRequest request
-        ) {
-
-        try {
-
-                // -------------------------------------------------
-                // Validate request
-                // -------------------------------------------------
-
-                if (
-                        request == null
-                                || request.getToken() == null
-                                || request.getToken().isBlank()
-                ) {
-
-                return ApiResponse.error(
-                        "Token không hợp lệ."
-                );
-                }
-
-                String token = request.getToken();
-
-                String redisKey =
-                        EMAIL_VERIFY_TOKEN_PREFIX + token;
-
-
-                // -------------------------------------------------
-                // Find email by token
-                // -------------------------------------------------
-
-                String email =
-                        redisTemplate.opsForValue()
-                                .get(redisKey);
-
-
-                // -------------------------------------------------
-                // Token not found / expired
-                // -------------------------------------------------
-
-                if (
-                        email == null
-                                || email.isBlank()
-                ) {
-
-                return ApiResponse.error(
-                        "Token không tồn tại hoặc đã hết hạn."
-                );
-                }
-
-
-                // -------------------------------------------------
-                // Find user in Keycloak
-                // -------------------------------------------------
-
-                ApiResponse<UserRepresentation> keycloakResponse =
-                        keyCloakService.findByEmail(email);
-
-                if (
-                        keycloakResponse == null
-                                || !keycloakResponse.isSuccess()
-                                || keycloakResponse.getData() == null
-                ) {
-
-                return ApiResponse.error(
-                        "Không tìm thấy tài khoản."
-                );
-                }
-
-                UserRepresentation keycloakUser =
-                        keycloakResponse.getData();
-
-                String userId =
-                        keycloakUser.getId();
-
-
-                // -------------------------------------------------
-                // Update emailVerified in Keycloak
-                // -------------------------------------------------
-
-                keycloakUser.setEmailVerified(true);
-
-                keyCloakService
-                        .getUsersResource()
-                        .get(userId)
-                        .update(keycloakUser);
-
-
-                // -------------------------------------------------
-                // Update emailVerified in PostgreSQL
-                // -------------------------------------------------
-
-                Optional<User> userOptional =
-                        userRepository.findById(userId);
-
-                if (userOptional.isEmpty()) {
-
-                return ApiResponse.error(
-                        "Không tìm thấy người dùng trong hệ thống."
-                );
-                }
-
-                User user =
-                        userOptional.get();
-
-                user.setEmailVerified(true);
-
-                userRepository.save(user);
-
-
-                // -------------------------------------------------
-                // Delete token
-                // Prevent reuse
-                // -------------------------------------------------
-
-                redisTemplate.delete(redisKey);
-
-
-                // -------------------------------------------------
-                // Success
-                // -------------------------------------------------
-
-                return ApiResponse.success(
-                        "Xác thực email thành công.",
-                        email
-                );
-
-        } catch (Exception e) {
-
-                log.error(
-                        "Verify email token failed",
-                        e
-                );
-
-                return ApiResponse.error(
-                        "Không thể xác thực email."
-                );
-        }
-        }
-
-
-
-    // =========================================================
-    // 6. SEND PASSWORD RESET OTP
-    // =========================================================
 
     @Override
-    public ApiResponse<Void> sendPasswordResetOtpEmail(
-            SendPasswordResetOtpEmailRequest request
+    public ApiResponse<String> verifyEmailToken(
+            VerifyEmailRequest request
     ) {
-
         try {
-
-            if (request == null) {
-
+            if (request == null
+                    || request.getToken() == null
+                    || request.getToken().isBlank()) {
                 return ApiResponse.error(
-                        "Request không hợp lệ."
+                        "Token xác thực không hợp lệ."
                 );
             }
 
-            String toEmail =
-                    request.getToEmail();
+            String token = request.getToken();
 
-            String userName =
-                    request.getUserName();
-
-            if (
-                    toEmail == null
-                            || toEmail.isBlank()
-            ) {
-
+            if (!JwtTokenUtils.isValid(
+                    token,
+                    emailVerificationSecret
+            )) {
                 return ApiResponse.error(
-                        "Email không được để trống."
+                        "Token xác thực không hợp lệ hoặc đã hết hạn."
                 );
             }
 
-
-            // -------------------------------------------------
-            // Generate UNIQUE OTP
-            // -------------------------------------------------
-
-            String otp =
-                    generateUniquePasswordResetOtp();
-
-
-            // -------------------------------------------------
-            // Redis
-            //
-            // PWD_RESET_OTP:{otp}
-            //             ↓
-            //          email
-            //             ↓
-            //         TTL 5 phút
-            // -------------------------------------------------
-
-            String redisKey =
-                    PASSWORD_RESET_OTP_PREFIX + otp;
-
-            redisTemplate.opsForValue().set(
-                    redisKey,
-                    toEmail,
-                    EXPIRE_SECONDS,
-                    TimeUnit.SECONDS
-            );
-
-
-            // -------------------------------------------------
-            // Template DTO
-            // -------------------------------------------------
-
-            EmailTemplateDataRequest templateData =
-                    EmailTemplateDataRequest.builder()
-                            .title("Mã xác thực")
-                            .userName(
-                                    userName != null
-                                            ? userName
-                                            : "User"
-                            )
-                            .message(
-                                    "Vui lòng sử dụng mã bên dưới "
-                                            + "để xác nhận yêu cầu "
-                                            + "đặt lại mật khẩu."
-                            )
-                            .otp(otp)
-                            .expireMinutes(
-                                    EXPIRE_MINUTES
-                            )
-                            .build();
-
-
-            // -------------------------------------------------
-            // Render template
-            // -------------------------------------------------
-
-            String html =
-                    renderTemplate(
-                            OTP_TEMPLATE,
-                            templateData
+            String email =
+                    JwtTokenUtils.getEmail(
+                            token,
+                            emailVerificationSecret
                     );
 
+            if (email == null || email.isBlank()) {
+                return ApiResponse.error(
+                        "Token không chứa email hợp lệ."
+                );
+            }
 
-            // -------------------------------------------------
-            // Send email
-            // -------------------------------------------------
-
-            SendMailRequest mailRequest =
-                    SendMailRequest.builder()
-                            .toEmail(toEmail)
-                            .subject("Mã xác thực")
-                            .content(html)
-                            .build();
-
-            return sendHtmlEmail(
-                    mailRequest
+            return ApiResponse.success(
+                    "Token xác thực hợp lệ.",
+                    email
             );
 
         } catch (Exception e) {
-
-            log.error(
-                    "Send password reset OTP failed",
-                    e
-            );
-
             return ApiResponse.error(
-                    "Không thể gửi OTP."
+                    "Không thể xác thực token."
             );
         }
     }
 
+        @Override
+        public ApiResponse<Void> sendPasswordResetOtpEmail(
+                SendPasswordResetOtpEmailRequest request
+        ) {
+        try {
+                if (request == null
+                        || request.getToEmail() == null
+                        || request.getToEmail().isBlank()) {
+                return ApiResponse.error("Email không hợp lệ.");
+                }
 
-    // =========================================================
-    // 7. VERIFY PASSWORD RESET OTP
-    // =========================================================
+                String email = request.getToEmail();
+                String redisKey = PASSWORD_RESET_OTP_PREFIX + email;
+
+                String existingOtp =
+                        redisTemplate.opsForValue().get(redisKey);
+
+                if (existingOtp != null && !existingOtp.isBlank()) {
+                return ApiResponse.error(
+                        "OTP hiện tại vẫn còn hiệu lực."
+                );
+                }
+
+                String otp = OtpUtils.generateOtp();
+
+                redisTemplate.opsForValue().set(
+                        redisKey,
+                        otp,
+                        PASSWORD_RESET_OTP_EXPIRE_MINUTES,
+                        TimeUnit.MINUTES
+                );
+
+                EmailTemplateDataRequest templateData =
+                        EmailTemplateDataRequest.builder()
+                                .title("Đặt lại mật khẩu")
+                                .message(
+                                        "Sử dụng mã OTP bên dưới để tiếp tục đặt lại mật khẩu."
+                                )
+                                .otp(otp)
+                                .expireMessage(
+                                        "Mã OTP có hiệu lực trong 5 phút."
+                                )
+                                .footerMessage(
+                                        "Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email."
+                                )
+                                .build();
+
+                String html =
+                        EmailTemplateUtils.render(
+                                PASSWORD_RESET_OTP_TEMPLATE,
+                                templateData
+                        );
+
+                SendMailRequest mailRequest =
+                        SendMailRequest.builder()
+                                .toEmail(email)
+                                .subject("Mã OTP đặt lại mật khẩu")
+                                .content(html)
+                                .build();
+
+                ApiResponse<Void> response =
+                        sendHtmlEmail(mailRequest);
+
+                if (!response.isSuccess()) {
+                redisTemplate.delete(redisKey);
+                }
+
+                return response;
+
+        } catch (Exception e) {
+                return ApiResponse.error(
+                        "Không thể gửi OTP: " + e.getMessage()
+                );
+        }
+        }
+
 
     @Override
     public ApiResponse<String> verifyPasswordResetOtp(
-            VerifyPasswordResetOtpRequest request
+            VerifyResetPasswordOtpRequest request
     ) {
-
         try {
-
-            if (request == null) {
-
+            if (request == null
+                    || request.getEmail() == null
+                    || request.getEmail().isBlank()) {
                 return ApiResponse.error(
-                        "Request không hợp lệ."
+                        "Email không hợp lệ."
                 );
             }
 
-            String otp =
-                    request.getOtp();
-
-            if (
-                    otp == null
-                            || otp.isBlank()
-            ) {
-
+            if (request.getOtp() == null
+                    || request.getOtp().isBlank()) {
                 return ApiResponse.error(
-                        "OTP không được để trống."
+                        "OTP không hợp lệ."
                 );
             }
-
-
-            // -------------------------------------------------
-            // Find email by OTP
-            //
-            // PWD_RESET_OTP:{otp}
-            //          ↓
-            //        email
-            // -------------------------------------------------
 
             String redisKey =
-                    PASSWORD_RESET_OTP_PREFIX + otp;
+                    PASSWORD_RESET_OTP_PREFIX
+                            + request.getEmail();
 
-            String email =
-                    redisTemplate.opsForValue()
-                            .get(redisKey);
+            String storedOtp =
+                    redisTemplate.opsForValue().get(redisKey);
 
-
-            // -------------------------------------------------
-            // OTP not found / expired
-            // -------------------------------------------------
-
-            if (
-                    email == null
-                            || email.isBlank()
-            ) {
-
+            if (storedOtp == null) {
                 return ApiResponse.error(
                         "OTP không tồn tại hoặc đã hết hạn."
                 );
             }
 
+            if (!storedOtp.equals(request.getOtp())) {
+                return ApiResponse.error(
+                        "OTP không chính xác."
+                );
+            }
 
-            // -------------------------------------------------
-            // Delete OTP
-            // Prevent reuse
-            // -------------------------------------------------
-
-            redisTemplate.delete(
-                    redisKey
-            );
-
+            redisTemplate.delete(redisKey);
 
             return ApiResponse.success(
-                    "Xác thực OTP thành công.",
-                    email
+                    "OTP hợp lệ.",
+                    request.getEmail()
             );
 
         } catch (Exception e) {
-
-            log.error(
-                    "Verify password reset OTP failed",
-                    e
-            );
-
             return ApiResponse.error(
                     "Không thể xác thực OTP."
             );
         }
-    }
-
-
-    // =========================================================
-    // GENERATE UNIQUE VERIFICATION TOKEN
-    // =========================================================
-
-    private String generateUniqueVerificationToken() {
-
-        String token;
-
-        do {
-
-            token =
-                    TokenUtils.generateRandomToken(
-                            TOKEN_BYTE_LENGTH
-                    );
-
-        } while (
-                redisTemplate.hasKey(
-                        EMAIL_VERIFY_TOKEN_PREFIX + token
-                )
-        );
-
-        return token;
-    }
-
-
-    // =========================================================
-    // GENERATE UNIQUE PASSWORD RESET OTP
-    // =========================================================
-
-    private String generateUniquePasswordResetOtp() {
-
-        String otp;
-
-        do {
-
-            otp =
-                    OtpUtils.generateOtp();
-
-        } while (
-                redisTemplate.hasKey(
-                        PASSWORD_RESET_OTP_PREFIX + otp
-                )
-        );
-
-        return otp;
-    }
-
-
-    // =========================================================
-    // RENDER TEMPLATE
-    // =========================================================
-
-    private String renderTemplate(
-            String templatePath,
-            EmailTemplateDataRequest data
-    ) {
-
-        try {
-
-            ClassPathResource resource =
-                    new ClassPathResource(
-                            templatePath
-                    );
-
-            if (!resource.exists()) {
-
-                throw new IllegalArgumentException(
-                        "Không tìm thấy email template: "
-                                + templatePath
-                );
-            }
-
-            String template;
-
-            try (
-                    InputStream inputStream =
-                            resource.getInputStream()
-            ) {
-
-                template =
-                        new String(
-                                inputStream.readAllBytes(),
-                                StandardCharsets.UTF_8
-                        );
-            }
-
-
-            // -------------------------------------------------
-            // Replace placeholders
-            // -------------------------------------------------
-
-            template =
-                    template.replace(
-                            "{{title}}",
-                            safe(data.getTitle())
-                    );
-
-            template =
-                    template.replace(
-                            "{{userName}}",
-                            safe(data.getUserName())
-                    );
-
-            template =
-                    template.replace(
-                            "{{message}}",
-                            safe(data.getMessage())
-                    );
-
-            template =
-                    template.replace(
-                            "{{otp}}",
-                            safe(data.getOtp())
-                    );
-
-            template =
-                    template.replace(
-                            "{{verificationLink}}",
-                            safe(data.getVerificationLink())
-                    );
-
-            template =
-                    template.replace(
-                            "{{buttonText}}",
-                            safe(data.getButtonText())
-                    );
-
-            template =
-                    template.replace(
-                            "{{expireMinutes}}",
-                            String.valueOf(
-                                    data.getExpireMinutes()
-                            )
-                    );
-
-            return template;
-
-        } catch (Exception e) {
-
-            log.error(
-                    "Render email template failed: {}",
-                    templatePath,
-                    e
-            );
-
-            throw new RuntimeException(
-                    "Không thể render email template.",
-                    e
-            );
-        }
-    }
-
-
-    // =========================================================
-    // SAFE STRING
-    // =========================================================
-
-    private String safe(String value) {
-
-        return value != null
-                ? value
-                : "";
     }
 }

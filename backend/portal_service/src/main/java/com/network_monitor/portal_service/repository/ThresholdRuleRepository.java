@@ -13,9 +13,20 @@ public interface ThresholdRuleRepository extends JpaRepository<ThresholdRule, Lo
 
     List<ThresholdRule> findByIsEnabledTrue();
 
-    List<ThresholdRule> findByMetricTypeAndIsEnabledTrue(String metricType);
+    List<ThresholdRule> findByMetricTypeAndIsEnabledTrue(
+            String metricType
+    );
 
-    @Query("SELECT t FROM ThresholdRule t WHERE t.isEnabled = true AND " +
-           "(t.device.id = :deviceId OR t.device.id IS NULL)")
-    List<ThresholdRule> findRulesByDevice(@Param("deviceId") Long deviceId);
+    @Query("""
+        SELECT t
+        FROM ThresholdRule t
+        WHERE t.isEnabled = true
+          AND (
+              t.device.id = :deviceId
+              OR t.device.id IS NULL
+          )
+        """)
+    List<ThresholdRule> findRulesByDevice(
+            @Param("deviceId") Long deviceId
+    );
 }

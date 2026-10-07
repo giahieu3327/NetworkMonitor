@@ -1,91 +1,217 @@
 package com.network_monitor.portal_service.service.impl;
 
-import com.network_monitor.portal_service.model.dto.request.ForgotPasswordRequest;
-import com.network_monitor.portal_service.model.dto.request.LoginRequest;
-import com.network_monitor.portal_service.model.dto.request.LogoutRequest;
-import com.network_monitor.portal_service.model.dto.request.RefreshTokenRequest;
-import com.network_monitor.portal_service.model.dto.request.ResetPasswordRequest;
-import com.network_monitor.portal_service.model.dto.request.SendPasswordResetOtpEmailRequest;
-import com.network_monitor.portal_service.model.dto.response.ApiResponse;
-import com.network_monitor.portal_service.model.dto.response.TokenResponse;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
+import com.network_monitor.portal_service.model.entity.User;
+import com.network_monitor.portal_service.repository.UserRepository;
 import com.network_monitor.portal_service.service.AuthService;
 import com.network_monitor.portal_service.service.KeyCloakService;
 import com.network_monitor.portal_service.service.MailService;
-
 import lombok.RequiredArgsConstructor;
-
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
     private final KeyCloakService keyCloakService;
-
     private final MailService mailService;
+    private final UserRepository userRepository;
 
+    @Override
+    public ApiResponse<Void> register(
+            RegisterRequest request
+    ) {
+        if (!request.getPassword()
+                .equals(request.getConfirmPassword())) {
 
-    // ============================================================
-    // LOGIN
-    // ============================================================
+            return ApiResponse.error(
+                    "Đăng ký thất bại",
+                    "Mật khẩu xác nhận không khớp!"
+            );
+        }
+
+        if (userRepository.existsByUsername(
+                request.getUsername()
+        )) {
+            return ApiResponse.error(
+                    "Đăng ký thất bại",
+                    "Username đã tồn tại!"
+            );
+        }
+
+        if (userRepository.existsByEmail(
+                request.getEmail()
+        )) {
+            return ApiResponse.error(
+                    "Đăng ký thất bại",
+                    "Email đã tồn tại!"
+            );
+        }
+
+        ApiResponse<Boolean> keycloakExists =
+                keyCloakService.existsByUsername(
+                        request.getUsername()
+                );
+
+        if (!keycloakExists.isSuccess()) {
+            return ApiResponse.error(
+                    "Đăng ký thất bại",
+                    "Không thể kiểm tra username trên Keycloak!"
+            );
+        }
+
+        if (Boolean.TRUE.equals(
+                keycloakExists.getData()
+        )) {
+            return ApiResponse.error(
+                    "Đăng ký thất bại",
+                    "Username đã tồn tại trên Keycloak!"
+            );
+        }
+
+        ApiResponse<String> createResponse =
+                keyCloakService.createUser(
+                        request.getUsername(),
+                        request.getEmail(),
+                        request.getFullName()
+                );
+
+        if (!createResponse.isSuccess()
+                || createResponse.getData() == null) {
+
+            return ApiResponse.error(
+                    "Đăng ký thất bại",
+                    createResponse.getErrorDetails()
+            );
+        }
+
+        String keycloakUserId =
+                createResponse.getData();
+
+        ApiResponse<Void> passwordResponse =
+                keyCloakService.setPassword(
+                        keycloakUserId,
+                        request.getPassword(),
+                        false
+                );
+
+        if (!passwordResponse.isSuccess()) {
+            keyCloakService.deleteUser(
+                    keycloakUserId
+            );
+
+            return ApiResponse.error(
+                    "Đăng ký thất bại",
+                    passwordResponse.getErrorDetails()
+            );
+        }
+
+        ApiResponse<Void> roleResponse =
+                keyCloakService.assignRealmRole(
+                        keycloakUserId,
+                        request.getRoleName()
+                );
+
+        if (!roleResponse.isSuccess()) {
+            keyCloakService.deleteUser(
+                    keycloakUserId
+            );
+
+            return ApiResponse.error(
+                    "Đăng ký thất bại",
+                    roleResponse.getErrorDetails()
+            );
+        }
+
+        User user =
+                User.builder()
+                        .id(keycloakUserId)
+                        .username(request.getUsername())
+                        .email(request.getEmail())
+                        .fullName(request.getFullName())
+                        .phoneNumber(request.getPhoneNumber())
+                        .roleName(request.getRoleName())
+                        .isActive(true)
+                        .emailVerified(false)
+                        .createdAt(LocalDateTime.now())
+                        .build();
+
+        try {
+            userRepository.save(user);
+        } catch (Exception e) {
+            keyCloakService.deleteUser(
+                    keycloakUserId
+            );
+
+            return ApiResponse.error(
+                    "Đăng ký thất bại",
+                    "Không thể lưu thông tin người dùng vào database!"
+            );
+        }
+
+        if (Boolean.TRUE.equals(
+                request.getSendEmailVerify()
+        )) {
+
+            SendVerificationEmailRequest emailRequest =
+                    SendVerificationEmailRequest.builder()
+                            .toEmail(request.getEmail())
+                            .build();
+
+            ApiResponse<Void> emailResponse =
+                    mailService.sendVerificationEmail(
+                            emailRequest
+                    );
+
+            if (!emailResponse.isSuccess()) {
+                return ApiResponse.success(
+                        "Đăng ký thành công nhưng không thể gửi email xác thực."
+                );
+            }
+        }
+
+        return ApiResponse.success(
+                "Đăng ký tài khoản thành công."
+        );
+    }
 
     @Override
     public ApiResponse<TokenResponse> login(
             LoginRequest request
     ) {
-
         return keyCloakService.login(
                 request.getUsername(),
                 request.getPassword()
         );
     }
 
-
-    // ============================================================
-    // REFRESH TOKEN
-    // ============================================================
-
     @Override
-    public ApiResponse<TokenResponse> refreshToken(
-            RefreshTokenRequest request
+    public ApiResponse<TokenResponse> refresh(
+            RefreshRequest request
     ) {
-
         return keyCloakService.refreshToken(
                 request.getRefreshToken()
         );
     }
 
-
-    // ============================================================
-    // LOGOUT
-    // ============================================================
-
     @Override
     public ApiResponse<Void> logout(
             LogoutRequest request
     ) {
-
         return keyCloakService.logout(
                 request.getRefreshToken()
         );
     }
 
-
-    // ============================================================
-    // FORGOT PASSWORD
-    // ============================================================
-
     @Override
     public ApiResponse<Void> forgotPassword(
             ForgotPasswordRequest request
     ) {
-
-        /*
-         * Bước 1:
-         * Tìm user trên Keycloak bằng email.
-         */
-
         ApiResponse<UserRepresentation> userResponse =
                 keyCloakService.findByEmail(
                         request.getEmail()
@@ -103,15 +229,9 @@ public class AuthServiceImpl implements AuthService {
         UserRepresentation user =
                 userResponse.getData();
 
-        /*
-         * Bước 2:
-         * Gửi OTP thông qua MailService.
-         */
-
         SendPasswordResetOtpEmailRequest emailRequest =
                 SendPasswordResetOtpEmailRequest.builder()
                         .toEmail(user.getEmail())
-                        .userName(user.getUsername())
                         .build();
 
         return mailService.sendPasswordResetOtpEmail(
@@ -119,21 +239,19 @@ public class AuthServiceImpl implements AuthService {
         );
     }
 
-
-    // ============================================================
-    // RESET PASSWORD
-    // ============================================================
+    @Override
+    public ApiResponse<String> verifyResetPasswordOtp(
+            VerifyResetPasswordOtpRequest request
+    ) {
+        return mailService.verifyPasswordResetOtp(
+                request
+        );
+    }
 
     @Override
     public ApiResponse<Void> resetPassword(
             ResetPasswordRequest request
     ) {
-
-        /*
-         * Bước 1:
-         * Kiểm tra mật khẩu xác nhận.
-         */
-
         if (!request.getNewPassword()
                 .equals(request.getConfirmPassword())) {
 
@@ -142,12 +260,6 @@ public class AuthServiceImpl implements AuthService {
                     "Mật khẩu xác nhận không khớp!"
             );
         }
-
-
-        /*
-         * Bước 2:
-         * Tìm user trên Keycloak bằng email.
-         */
 
         ApiResponse<UserRepresentation> userResponse =
                 keyCloakService.findByEmail(
@@ -163,25 +275,124 @@ public class AuthServiceImpl implements AuthService {
             );
         }
 
-
-        /*
-         * Bước 3:
-         * Lấy Keycloak User ID.
-         */
-
         String userId =
                 userResponse.getData().getId();
-
-
-        /*
-         * Bước 4:
-         * Cập nhật password trên Keycloak.
-         */
 
         return keyCloakService.setPassword(
                 userId,
                 request.getNewPassword(),
                 false
+        );
+    }
+
+    @Override
+    public ApiResponse<Void> sendVerificationEmail(
+            SendVerificationEmailRequest request
+    ) {
+        ApiResponse<UserRepresentation> userResponse =
+                keyCloakService.findByEmail(
+                        request.getToEmail()
+                );
+
+        if (!userResponse.isSuccess()
+                || userResponse.getData() == null) {
+
+            return ApiResponse.error(
+                    "Gửi email xác thực thất bại",
+                    "Email không tồn tại trong hệ thống!"
+            );
+        }
+
+        UserRepresentation user =
+                userResponse.getData();
+
+        if (Boolean.TRUE.equals(
+                user.isEmailVerified()
+        )) {
+            return ApiResponse.error(
+                    "Gửi email xác thực thất bại",
+                    "Email đã được xác thực!"
+            );
+        }
+
+        return mailService.sendVerificationEmail(
+                request
+        );
+    }
+
+    @Override
+    public ApiResponse<String> verifyEmail(
+            VerifyEmailRequest request
+    ) {
+        ApiResponse<String> tokenResponse =
+                mailService.verifyEmailToken(
+                        request
+                );
+
+        if (!tokenResponse.isSuccess()
+                || tokenResponse.getData() == null) {
+
+            return ApiResponse.error(
+                    "Xác thực email thất bại",
+                    tokenResponse.getErrorDetails()
+            );
+        }
+
+        String email =
+                tokenResponse.getData();
+
+        ApiResponse<UserRepresentation> userResponse =
+                keyCloakService.findByEmail(
+                        email
+                );
+
+        if (!userResponse.isSuccess()
+                || userResponse.getData() == null) {
+
+            return ApiResponse.error(
+                    "Xác thực email thất bại",
+                    "Không tìm thấy tài khoản!"
+            );
+        }
+
+        UserRepresentation user =
+                userResponse.getData();
+
+        String userId =
+                user.getId();
+
+        ApiResponse<Void> keycloakResponse =
+                keyCloakService.setEmailVerified(
+                        userId,
+                        true
+                );
+
+        if (!keycloakResponse.isSuccess()) {
+            return ApiResponse.error(
+                    "Xác thực email thất bại",
+                    keycloakResponse.getErrorDetails()
+            );
+        }
+
+        User localUser =
+                userRepository.findById(
+                        userId
+                ).orElse(null);
+
+        if (localUser == null) {
+            return ApiResponse.error(
+                    "Xác thực email thất bại",
+                    "Không tìm thấy người dùng trong database!"
+            );
+        }
+
+        localUser.setEmailVerified(true);
+
+        userRepository.save(localUser);
+
+        return ApiResponse.success(
+                "Xác thực email thành công.",
+                email
         );
     }
 }

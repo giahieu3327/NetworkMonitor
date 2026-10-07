@@ -1,14 +1,17 @@
 package com.network_monitor.portal_service.model.entity;
 
-import com.network_monitor.portal_service.model.enums.SyslogSeverity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "syslogs")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Syslog {
 
     @Id
@@ -19,26 +22,51 @@ public class Syslog {
     @JoinColumn(name = "device_id")
     private Device device;
 
-    @Column(name = "ip_address", length = 45, nullable = false)
+    @Column(
+            name = "ip_address",
+            length = 45,
+            nullable = false
+    )
     private String ipAddress;
 
-    @Column(length = 20)
+    @Column(
+            name = "facility",
+            length = 100,
+            nullable = false
+    )
     private String facility;
 
-    @Enumerated(EnumType.STRING)
-    @Column(length = 20, nullable = false)
-    private SyslogSeverity severity;
+    @Column(
+            name = "severity",
+            length = 100,
+            nullable = false
+    )
+    private String severity;
 
-    @Column(name = "app_name", length = 50)
+    @Column(
+            name = "app_name",
+            length = 255
+    )
     private String appName;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
+    @Column(
+            name = "message",
+            nullable = false,
+            columnDefinition = "TEXT"
+    )
     private String message;
 
-    @Column(name = "raw_log", columnDefinition = "TEXT")
+    @Column(
+            name = "raw_log",
+            nullable = false,
+            columnDefinition = "TEXT"
+    )
     private String rawLog;
 
     @Builder.Default
-    @Column(nullable = false)
-    private OffsetDateTime timestamp = OffsetDateTime.now();
+    @Column(
+            name = "timestamp",
+            nullable = false
+    )
+    private LocalDateTime timestamp = LocalDateTime.now();
 }

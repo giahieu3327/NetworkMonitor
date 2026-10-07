@@ -1,21 +1,20 @@
 package com.network_monitor.portal_service.service;
 
-import com.network_monitor.portal_service.model.dto.request.ForgotPasswordRequest;
-import com.network_monitor.portal_service.model.dto.request.LoginRequest;
-import com.network_monitor.portal_service.model.dto.request.LogoutRequest;
-import com.network_monitor.portal_service.model.dto.request.RefreshTokenRequest;
-import com.network_monitor.portal_service.model.dto.request.ResetPasswordRequest;
-import com.network_monitor.portal_service.model.dto.response.ApiResponse;
-import com.network_monitor.portal_service.model.dto.response.TokenResponse;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
 
 public interface AuthService {
+
+    ApiResponse<Void> register(
+            RegisterRequest request
+    );
 
     ApiResponse<TokenResponse> login(
             LoginRequest request
     );
 
-    ApiResponse<TokenResponse> refreshToken(
-            RefreshTokenRequest request
+    ApiResponse<TokenResponse> refresh(
+            RefreshRequest request
     );
 
     ApiResponse<Void> logout(
@@ -26,7 +25,19 @@ public interface AuthService {
             ForgotPasswordRequest request
     );
 
+    ApiResponse<String> verifyResetPasswordOtp(
+            VerifyResetPasswordOtpRequest request
+    );
+
     ApiResponse<Void> resetPassword(
             ResetPasswordRequest request
+    );
+
+    ApiResponse<Void> sendVerificationEmail(
+            SendVerificationEmailRequest request
+    );
+
+    ApiResponse<String> verifyEmail(
+            VerifyEmailRequest request
     );
 }

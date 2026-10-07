@@ -1,17 +1,18 @@
 package com.network_monitor.portal_service.model.entity;
 
-import com.network_monitor.portal_service.model.enums.IncidentSeverity;
-import com.network_monitor.portal_service.model.enums.IncidentStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "incidents")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Incident {
 
     @Id
@@ -19,7 +20,7 @@ public class Incident {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "device_id", nullable = false)
+    @JoinColumn(name = "device_id")
     private Device device;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -34,39 +35,66 @@ public class Incident {
     @JoinColumn(name = "syslog_id")
     private Syslog syslog;
 
-    @Enumerated(EnumType.STRING)
-    @Column(length = 20, nullable = false)
-    private IncidentSeverity severity;
+    @Column(
+            name = "severity",
+            length = 100,
+            nullable = false
+    )
+    private String severity;
 
-    @Column(length = 200, nullable = false)
+    @Column(
+            name = "title",
+            length = 500,
+            nullable = false
+    )
     private String title;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(
+            name = "message",
+            nullable = false,
+            columnDefinition = "TEXT"
+    )
     private String message;
 
-    @Column(name = "camunda_process_id", length = 64)
+    @Column(
+            name = "camunda_process_id",
+            length = 255
+    )
     private String camundaProcessId;
 
     @Builder.Default
-    @Enumerated(EnumType.STRING)
-    @Column(length = 30)
-    private IncidentStatus status = IncidentStatus.OPEN;
+    @Column(
+            name = "status",
+            length = 100,
+            nullable = false
+    )
+    private String status = "OPEN";
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "acknowledged_by")
     private User acknowledgedBy;
 
     @Column(name = "acknowledged_at")
-    private OffsetDateTime acknowledgedAt;
+    @Builder.Default
+    private LocalDateTime acknowledgedAt = LocalDateTime.now();
 
     @Column(name = "resolved_at")
-    private OffsetDateTime resolvedAt;
+    @Builder.Default
+    private LocalDateTime resolvedAt = LocalDateTime.now();
 
     @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private OffsetDateTime createdAt;
+    @Column(
+            name = "created_at",
+            nullable = false,
+            updatable = false
+    )
+    @Builder.Default
+    private LocalDateTime createdAt = LocalDateTime.now();
 
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private OffsetDateTime updatedAt;
+    @Column(
+            name = "updated_at",
+            nullable = false
+    )
+    @Builder.Default
+    private LocalDateTime updatedAt = LocalDateTime.now();
 }

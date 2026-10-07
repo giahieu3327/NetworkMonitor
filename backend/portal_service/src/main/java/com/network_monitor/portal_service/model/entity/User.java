@@ -2,9 +2,8 @@ package com.network_monitor.portal_service.model.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "users")
@@ -16,12 +15,16 @@ import java.time.OffsetDateTime;
 public class User {
 
     @Id
-    @Column(name = "id", length = 36, nullable = false)
+    @Column(
+            name = "id",
+            length = 36,
+            nullable = false
+    )
     private String id; // Keycloak Subject ID (UUID)
 
     @Column(
             name = "username",
-            length = 50,
+            length = 100,
             nullable = false,
             unique = true
     )
@@ -29,7 +32,7 @@ public class User {
 
     @Column(
             name = "email",
-            length = 100,
+            length = 255,
             nullable = false,
             unique = true
     )
@@ -37,20 +40,20 @@ public class User {
 
     @Column(
             name = "full_name",
-            length = 100,
+            length = 255,
             nullable = false
     )
     private String fullName; // Keycloak firstName + lastName
 
     @Column(
             name = "phone_number",
-            length = 20
+            length = 30
     )
     private String phoneNumber; // Keycloak attribute
 
     @Column(
             name = "role_name",
-            length = 50,
+            length = 100,
             nullable = false
     )
     private String roleName; // Keycloak role
@@ -74,12 +77,13 @@ public class User {
             nullable = false,
             updatable = false
     )
-    private OffsetDateTime createdAt; // Keycloak createdTimestamp
+    @Builder.Default
+    private LocalDateTime createdAt = LocalDateTime.now(); // Keycloak createdTimestamp
 
-    @UpdateTimestamp
     @Column(
             name = "updated_at",
             nullable = false
     )
-    private OffsetDateTime updatedAt; // PostgreSQL/Application quản lý
+    @Builder.Default
+    private LocalDateTime updatedAt = LocalDateTime.now(); // PostgreSQL quản lý
 }

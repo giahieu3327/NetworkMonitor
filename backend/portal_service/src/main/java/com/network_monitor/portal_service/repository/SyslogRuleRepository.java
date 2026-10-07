@@ -13,7 +13,16 @@ public interface SyslogRuleRepository extends JpaRepository<SyslogRule, Long> {
 
     List<SyslogRule> findByIsEnabledTrue();
 
-    @Query("SELECT s FROM SyslogRule s WHERE s.isEnabled = true AND " +
-           "(s.device.id = :deviceId OR s.device.id IS NULL)")
-    List<SyslogRule> findActiveRulesForDevice(@Param("deviceId") Long deviceId);
+    @Query("""
+        SELECT s
+        FROM SyslogRule s
+        WHERE s.isEnabled = true
+          AND (
+              s.device.id = :deviceId
+              OR s.device.id IS NULL
+          )
+        """)
+    List<SyslogRule> findActiveRulesForDevice(
+            @Param("deviceId") Long deviceId
+    );
 }

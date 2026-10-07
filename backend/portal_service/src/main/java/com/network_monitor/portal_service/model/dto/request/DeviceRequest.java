@@ -1,7 +1,5 @@
 package com.network_monitor.portal_service.model.dto.request;
 
-import com.network_monitor.portal_service.model.enums.DeviceStatus;
-import com.network_monitor.portal_service.model.enums.DeviceType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -21,16 +19,16 @@ public class DeviceRequest {
 
     @NotBlank(message = "Địa chỉ IP không được để trống")
     @Pattern(
-        regexp = "^((25[0-5]|(2[0-4]|1\\d|[1-9]|0)\\d)\\.){3}(25[0-5]|(2[0-4]|1\\d|[1-9]|0)\\d)$",
+        regexp = "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$",
         message = "Địa chỉ IP không hợp lệ"
     )
     private String ipAddress;
 
     @NotNull(message = "Loại thiết bị không được để trống")
-    private DeviceType deviceType;
+    private String deviceType;
 
     private String model;
     private String firmwareVersion;
 
-    private DeviceStatus status; // Khi Thêm mới có thể bỏ trống (Service tự gán UP), dùng khi Cập nhật
+    private String status; // Khi Thêm mới có thể bỏ trống (Service tự gán UP), dùng khi Cập nhật
 }

@@ -4,6 +4,7 @@ import com.network_monitor.portal_service.model.dto.request.DeviceRequest;
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
 import com.network_monitor.portal_service.model.dto.response.DeviceResponse;
 import com.network_monitor.portal_service.service.DeviceService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,48 +20,68 @@ public class DeviceController {
 
     private final DeviceService deviceService;
 
-    // 1. Thêm 1 hoặc nhiều thiết bị (Gửi List JSON)
+    // 1. Thêm 1 hoặc nhiều thiết bị
     @PostMapping
-    public ResponseEntity<ApiResponse<Void>> createDevices(@Valid @RequestBody List<DeviceRequest> requests) {
+    public ResponseEntity<ApiResponse<Void>> createDevices(
+            @RequestBody List<@Valid DeviceRequest> requests) {
+
         ApiResponse<Void> response = deviceService.createDevices(requests);
+
         if (response.isSuccess()) {
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+            return ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(response);
         }
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
     }
 
     // 2. Cập nhật 1 thiết bị theo ID
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> updateDevice(
             @PathVariable Long id,
-            @Valid @RequestBody DeviceRequest request) {
+            @Valid @RequestBody DeviceRequest request
+    ) {
         ApiResponse<Void> response = deviceService.updateDevice(id, request);
+
         if (response.isSuccess()) {
             return ResponseEntity.ok(response);
         }
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
     }
 
-    // 3. Xóa nhiều thiết bị cùng lúc (Truyền List ID qua Request Body)
+    // 3. Xóa nhiều thiết bị
     @DeleteMapping
-    public ResponseEntity<ApiResponse<Void>> deleteDevices(@RequestBody List<Long> ids) {
+    public ResponseEntity<ApiResponse<Void>> deleteDevices(
+            @RequestBody List<Long> ids
+    ) {
         ApiResponse<Void> response = deviceService.deleteDevices(ids);
+
         if (response.isSuccess()) {
             return ResponseEntity.ok(response);
         }
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
     }
 
-    // 4. Lấy tất cả thiết bị (GET /api/v1/devices)
+    // 4. Lấy tất cả thiết bị
     @GetMapping
     public ResponseEntity<List<DeviceResponse>> getAllDevices() {
         return ResponseEntity.ok(deviceService.getAllDevices());
     }
 
-    // 5. Lấy danh sách thiết bị theo 1 hoặc nhiều IDs (GET /api/v1/devices/1 HOẶC GET /api/v1/devices/1,3,5)
-    // Spring Boot sẽ tự động ép chuỗi phẩy "1,3,5" thành List<Long> [1, 3, 5]
+    // 5. Lấy thiết bị theo ID
     @GetMapping("/{ids}")
-    public ResponseEntity<List<DeviceResponse>> getDevicesByIds(@PathVariable List<Long> ids) {
+    public ResponseEntity<List<DeviceResponse>> getDevicesByIds(
+            @PathVariable List<Long> ids
+    ) {
         return ResponseEntity.ok(deviceService.getDevicesByIds(ids));
     }
 }

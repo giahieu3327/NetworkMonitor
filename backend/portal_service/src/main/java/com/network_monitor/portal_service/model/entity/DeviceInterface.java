@@ -1,55 +1,95 @@
 package com.network_monitor.portal_service.model.entity;
 
-import com.network_monitor.portal_service.model.enums.AdminStatus;
-import com.network_monitor.portal_service.model.enums.OperStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.OffsetDateTime;
+import java.io.Serializable;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "device_interfaces")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@IdClass(DeviceInterface.DeviceInterfaceId.class)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class DeviceInterface {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "device_id", nullable = false)
+    private Long deviceId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "device_id", nullable = false)
-    private Device device;
-
+    @Id
     @Column(name = "interface_index", nullable = false)
     private Integer interfaceIndex;
 
-    @Column(name = "interface_name", length = 50, nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "device_id",
+            nullable = false,
+            insertable = false,
+            updatable = false
+    )
+    private Device device;
+
+    @Column(
+            name = "interface_name",
+            length = 255,
+            nullable = false
+    )
     private String interfaceName;
 
-    @Column(name = "mac_address", length = 17)
+    @Column(
+            name = "mac_address",
+            length = 50
+    )
     private String macAddress;
 
-    @Builder.Default
     @Column(name = "speed_bps")
-    private Long speedBps = 1000000000L;
+    private Long speedBps;
 
-    @Builder.Default
-    @Enumerated(EnumType.STRING)
-    @Column(name = "admin_status", length = 10)
-    private AdminStatus adminStatus = AdminStatus.UP;
+    @Column(
+            name = "admin_status",
+            length = 100,
+            nullable = false
+    )
+    private String adminStatus;
 
-    @Builder.Default
-    @Enumerated(EnumType.STRING)
-    @Column(name = "oper_status", length = 10)
-    private OperStatus operStatus = OperStatus.UP;
+    @Column(
+            name = "oper_status",
+            length = 100,
+            nullable = false
+    )
+    private String operStatus;
 
     @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private OffsetDateTime createdAt;
+    @Column(
+            name = "discovered_at",
+            nullable = false,
+            updatable = false
+    )
+    @Builder.Default
+    private LocalDateTime discoveredAt = LocalDateTime.now();
 
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private OffsetDateTime updatedAt;
+    @Column(
+            name = "updated_at",
+            nullable = false
+    )
+    @Builder.Default
+    private LocalDateTime updatedAt = LocalDateTime.now();
+
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @EqualsAndHashCode
+    public static class DeviceInterfaceId implements Serializable {
+
+        private Long deviceId;
+
+        private Integer interfaceIndex;
+    }
 }
