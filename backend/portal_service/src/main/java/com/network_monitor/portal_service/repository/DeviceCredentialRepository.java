@@ -5,21 +5,35 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Optional;
 
 @Repository
 public interface DeviceCredentialRepository
         extends JpaRepository<DeviceCredential, Long> {
 
-    List<DeviceCredential> findByDeviceId(Long deviceId);
+    // Lấy toàn bộ thông tin xác thực của một thiết bị.
+    List<DeviceCredential> findByDevice_Id(Long deviceId);
 
-    Optional<DeviceCredential> findByDeviceIdAndProtocolType(
+    // Lấy thông tin xác thực theo thiết bị và loại credential.
+    List<DeviceCredential> findByDevice_IdAndCredentialType(
+            Long deviceId,
+            String credentialType
+    );
+
+    // Lấy thông tin xác thực theo thiết bị và giao thức.
+    List<DeviceCredential> findByDevice_IdAndProtocolType(
             Long deviceId,
             String protocolType
     );
 
-    Optional<DeviceCredential> findByDeviceIdAndProtocolTypeAndIsPrimaryTrue(
+    // Lấy thông tin xác thực đang hoạt động của một thiết bị.
+    List<DeviceCredential> findByDevice_IdAndIsActiveTrue(
+            Long deviceId
+    );
+
+    // Lấy thông tin xác thực theo thiết bị, giao thức và cổng.
+    List<DeviceCredential> findByDevice_IdAndProtocolTypeAndPort(
             Long deviceId,
-            String protocolType
+            String protocolType,
+            Integer port
     );
 }

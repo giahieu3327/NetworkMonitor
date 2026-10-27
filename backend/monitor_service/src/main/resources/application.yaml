@@ -5,39 +5,29 @@ spring:
   application:
     name: monitor_service
 
-  datasource:
-    url: jdbc:sqlite:${SQLITE_DB_PATH:monitor_local.db}?foreign_keys=on
-    driver-class-name: org.sqlite.JDBC
-
-  jpa:
-    database-platform: org.hibernate.community.dialect.SQLiteDialect
-    hibernate:
-      ddl-auto: validate
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-        physical_naming_strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
-
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
-    baseline-on-migrate: true
-
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
     consumer:
       group-id: monitor-group
       auto-offset-reset: earliest
+      enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: "*"
+        spring.json.trusted.packages: "com.network_monitor.monitor_service.model.dto.kafka"
+        spring.json.value.default.type: "com.network_monitor.monitor_service.model.dto.kafka.KafkaMessage"
 
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+      retries: 4
+      retry-backoff-ms: 100
+
+    listener:
+      ack-mode: record
 
 monitoring:
   snmp:
@@ -48,22 +38,6 @@ monitoring:
     port: ${SYSLOG_PORT:5140}
     protocol: ${SYSLOG_PROTOCOL:udp}
 
-management:
-  endpoints:
-    web:
-      base-path: /actuator
-      exposure:
-        include: health,info,metrics
-
-  endpoint:
-    health:
-      show-details: always
-      show-components: always
-
-  info:
-    env:
-      enabled: true
-
 info:
   app:
     name: "NMS Monitor Service"
@@ -72,8 +46,9 @@ info:
 
 logging:
   level:
-    root: INFO
-    org.hibernate.SQL: DEBUG
-    org.hibernate.orm.jdbc.bind: TRACE
-    org.springframework.kafka: INFO
+    root: WARN
     com.network_monitor.monitor_service: DEBUG
+    org.springframework: WARN
+    org.springframework.boot: INFO
+    org.springframework.kafka: WARN
+    org.apache.kafka: WARN

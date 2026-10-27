@@ -1,3 +1,4 @@
+
 package com.network_monitor.portal_service.model.dto.response;
 
 import lombok.AllArgsConstructor;
@@ -5,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 @Data
 @Builder
@@ -14,11 +15,22 @@ import java.time.LocalDateTime;
 public class DeviceCredentialResponse {
 
     private Long id;
+
     private Long deviceId;
+
+    private String credentialName;
+
+    private String credentialType;
+
     private String protocolType;
+
     private Integer port;
+
     private String communityString;
-    private Boolean isPrimary;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+
+    private Boolean isActive;
+
+    private OffsetDateTime createdAt;
+
+    private OffsetDateTime updatedAt;
 }

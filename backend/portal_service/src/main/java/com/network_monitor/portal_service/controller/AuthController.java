@@ -28,6 +28,45 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @PostMapping(
+            value = "/import",
+            consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> importUsers(
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+
+        ApiResponse<java.util.Map<String, Object>> response =
+                authService.importUsersFromExcel(file);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/export")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    public ResponseEntity<byte[]> exportUsers() {
+        try {
+            byte[] file = authService.exportUsersToExcel();
+
+            return ResponseEntity.ok()
+                    .header(
+                            org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=users.xlsx"
+                    )
+                    .contentType(
+                            org.springframework.http.MediaType.APPLICATION_OCTET_STREAM
+                    )
+                    .body(file);
+
+        } catch (java.io.IOException e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<TokenResponse>> login(@Valid @RequestBody LoginRequest request) {
         ApiResponse<TokenResponse> response = authService.login(request);

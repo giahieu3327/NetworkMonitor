@@ -1,70 +1,150 @@
+
 package com.network_monitor.portal_service.controller;
 
-import com.network_monitor.portal_service.model.dto.request.*;
-import com.network_monitor.portal_service.model.dto.response.*;
+import com.network_monitor.portal_service.model.dto.request.DeviceCredentialRequest;
+import com.network_monitor.portal_service.model.dto.request.SearchRequest;
+import com.network_monitor.portal_service.model.dto.response.ApiResponse;
+import com.network_monitor.portal_service.model.dto.response.DeviceCredentialResponse;
 import com.network_monitor.portal_service.service.DeviceCredentialService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.List;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+
+import java.io.IOException;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/device-credentials")
 @RequiredArgsConstructor
 public class DeviceCredentialController {
 
-    private final DeviceCredentialService credentialService;
+    private final DeviceCredentialService deviceCredentialService;
 
-    // 1. Thêm 1 hoặc nhiều cấu hình xác thực (Gửi List JSON)
     @PostMapping
-    public ResponseEntity<ApiResponse<Void>> addCredentials(@Valid @RequestBody List<DeviceCredentialRequest> requests) {
-        ApiResponse<Void> response = credentialService.addCredentials(requests);
-        if (response.isSuccess()) {
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    public ResponseEntity<ApiResponse<DeviceCredentialResponse>> addCredential(
+            @Valid @RequestBody DeviceCredentialRequest request
+    ) {
+        ApiResponse<DeviceCredentialResponse> response =
+                deviceCredentialService.addCredential(request);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
         }
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    // 2. Cập nhật 1 cấu hình xác thực theo ID
+    @PostMapping(
+            value = "/import",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> createCredentialsFromExcel(
+            @RequestParam("file") MultipartFile file
+    ) {
+        ApiResponse<Map<String, Object>> response =
+                deviceCredentialService.createCredentialsFromExcel(file);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+        @GetMapping("/export")
+        public ResponseEntity<byte[]> exportCredentialsToExcel()
+                throws IOException {
+
+        byte[] file = deviceCredentialService.exportCredentialsToExcel();
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"device-credentials.xlsx\""
+                )
+                .body(file);
+        }
+
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> updateCredential(
             @PathVariable Long id,
-            @Valid @RequestBody DeviceCredentialRequest request) {
-        ApiResponse<Void> response = credentialService.updateCredential(id, request);
-        if (response.isSuccess()) {
-            return ResponseEntity.ok(response);
+            @Valid @RequestBody DeviceCredentialRequest request
+    ) {
+        ApiResponse<Void> response =
+                deviceCredentialService.updateCredential(id, request);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
         }
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+
+        return ResponseEntity.ok(response);
     }
 
-    // 3. Xóa nhiều cấu hình xác thực cùng lúc (Truyền List ID qua Request Body)
-    @DeleteMapping
-    public ResponseEntity<ApiResponse<Void>> deleteCredentials(@RequestBody List<Long> ids) {
-        ApiResponse<Void> response = credentialService.deleteCredentials(ids);
-        if (response.isSuccess()) {
-            return ResponseEntity.ok(response);
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteCredential(
+            @PathVariable Long id
+    ) {
+        ApiResponse<Void> response =
+                deviceCredentialService.deleteCredential(id);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
         }
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+
+        return ResponseEntity.ok(response);
     }
 
-    // 4. Lấy toàn bộ cấu hình xác thực (GET /api/v1/device-credentials)
-    @GetMapping
-    public ResponseEntity<List<DeviceCredentialResponse>> getAllCredentials() {
-        return ResponseEntity.ok(credentialService.getAllCredentials());
+    @DeleteMapping("/device/{deviceId}")
+    public ResponseEntity<ApiResponse<Void>> deleteCredentialsByDeviceId(
+            @PathVariable Long deviceId
+    ) {
+        ApiResponse<Void> response =
+                deviceCredentialService.deleteCredentialsByDeviceId(deviceId);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
     }
 
-    // 5. Lấy danh sách cấu hình xác thực theo 1 hoặc nhiều IDs (GET /api/v1/device-credentials/1 hoặc /1,3,5)
-    @GetMapping("/{ids}")
-    public ResponseEntity<List<DeviceCredentialResponse>> getCredentialsByIds(@PathVariable List<Long> ids) {
-        return ResponseEntity.ok(credentialService.getCredentialsByIds(ids));
-    }
-
-    // 6. Lấy danh sách cấu hình xác thực của 1 thiết bị cụ thể (GET /api/v1/device-credentials/device/{deviceId})
     @GetMapping("/device/{deviceId}")
-    public ResponseEntity<List<DeviceCredentialResponse>> getCredentialsByDeviceId(@PathVariable Long deviceId) {
-        return ResponseEntity.ok(credentialService.getCredentialsByDeviceId(deviceId));
+    public ResponseEntity<Page<DeviceCredentialResponse>> getCredentialsByDeviceId(
+            @PathVariable Long deviceId,
+            @ModelAttribute SearchRequest request
+    ) {
+        return ResponseEntity.ok(
+                deviceCredentialService.getCredentialsByDeviceId(
+                        deviceId,
+                        request
+                )
+        );
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<DeviceCredentialResponse>> getCredentialById(
+            @PathVariable Long id
+    ) {
+        ApiResponse<DeviceCredentialResponse> response =
+                deviceCredentialService.getCredentialById(id);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(response);
+        }
+
+        return ResponseEntity.ok(response);
     }
 }

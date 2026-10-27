@@ -1,9 +1,17 @@
+
 package com.network_monitor.portal_service.model.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "users")
@@ -14,76 +22,88 @@ import java.time.LocalDateTime;
 @Builder
 public class User {
 
+    // ID người dùng đồng bộ từ Keycloak.
     @Id
     @Column(
             name = "id",
             length = 36,
             nullable = false
     )
-    private String id; // Keycloak Subject ID (UUID)
+    private String id;
 
+    // Tên đăng nhập của người dùng.
     @Column(
             name = "username",
             length = 100,
             nullable = false,
             unique = true
     )
-    private String username; // Keycloak username
+    private String username;
 
+    // Email người dùng.
     @Column(
             name = "email",
             length = 255,
             nullable = false,
             unique = true
     )
-    private String email; // Keycloak email
+    private String email;
 
+    // Họ và tên đầy đủ.
     @Column(
             name = "full_name",
-            length = 255,
-            nullable = false
+            length = 150
     )
-    private String fullName; // Keycloak firstName + lastName
+    private String fullName;
 
+    // Số điện thoại liên hệ.
     @Column(
             name = "phone_number",
-            length = 30
+            length = 20
     )
-    private String phoneNumber; // Keycloak attribute
+    private String phoneNumber;
 
+    // Vai trò trong ứng dụng, ví dụ ADMIN, MANAGER.
+    // Dùng String, không sử dụng Enum.
     @Column(
             name = "role_name",
-            length = 100,
+            length = 50,
             nullable = false
     )
-    private String roleName; // Keycloak role
+    private String roleName;
 
+    // Trạng thái hoạt động của tài khoản.
+    @Builder.Default
     @Column(
             name = "is_active",
             nullable = false
     )
-    @Builder.Default
-    private Boolean isActive = true; // Keycloak enabled
+    private Boolean isActive = true;
 
+    // Trạng thái xác minh email.
+    @Builder.Default
     @Column(
             name = "email_verified",
             nullable = false
     )
-    @Builder.Default
-    private Boolean emailVerified = false; // Keycloak emailVerified
+    private Boolean emailVerified = false;
 
+    // Thời điểm tạo bản ghi.
+    // PostgreSQL có DEFAULT CURRENT_TIMESTAMP.
     @Column(
             name = "created_at",
             nullable = false,
             updatable = false
     )
     @Builder.Default
-    private LocalDateTime createdAt = LocalDateTime.now(); // Keycloak createdTimestamp
+    private OffsetDateTime createdAt = OffsetDateTime.now();
 
+    // Thời điểm cập nhật gần nhất.
+    // PostgreSQL trigger tự cập nhật khi UPDATE.
     @Column(
             name = "updated_at",
             nullable = false
     )
     @Builder.Default
-    private LocalDateTime updatedAt = LocalDateTime.now(); // PostgreSQL quản lý
+    private OffsetDateTime updatedAt = OffsetDateTime.now();
 }

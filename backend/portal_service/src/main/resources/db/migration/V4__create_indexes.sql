@@ -1,151 +1,136 @@
+
 -- ============================================================
 -- FILE: V4__create_indexes.sql
--- Mô tả: Index phục vụ truy vấn NetworkMonitor
+-- Mô tả: Tạo index phục vụ truy vấn NetworkMonitor
 -- ============================================================
 
 
--- ============================================================
--- DEVICE CREDENTIALS
--- ============================================================
+-- ------------------------------------------------------------
+-- DEVICES
+-- Hỗ trợ lọc thiết bị theo trạng thái.
+-- ------------------------------------------------------------
 
-CREATE INDEX idx_device_credentials_device
-ON device_credentials(device_id);
-
-
--- ============================================================
--- DEVICE INTERFACES
--- ============================================================
-
-CREATE INDEX idx_device_interfaces_device
-ON device_interfaces(device_id);
-
-CREATE INDEX idx_device_interfaces_mac
-ON device_interfaces(mac_address);
+CREATE INDEX idx_devices_status
+ON devices(status);
 
 
--- ============================================================
--- OID CONFIGS
--- ============================================================
+-- ------------------------------------------------------------
+-- DEVICE_CREDENTIALS
+-- Tìm cấu hình đang hoạt động của một thiết bị.
+-- ------------------------------------------------------------
 
-CREATE INDEX idx_oid_configs_device
-ON oid_configs(device_id);
-
-CREATE INDEX idx_oid_configs_device_interface
-ON oid_configs(device_id, interface_index);
-
-CREATE INDEX idx_oid_configs_metric_type
-ON oid_configs(metric_type);
+CREATE INDEX idx_device_credentials_device_active
+ON device_credentials(device_id, is_active);
 
 
--- ============================================================
+-- ------------------------------------------------------------
+-- OID_CONFIGS
+-- Tìm cấu hình OID đang bật theo thiết bị.
+-- ------------------------------------------------------------
+
+CREATE INDEX idx_oid_configs_device_active
+ON oid_configs(device_id, is_active);
+
+
+-- ------------------------------------------------------------
 -- METRICS
---
--- Phục vụ:
---   device + time range
---   interface + time range
--- ============================================================
+-- Lấy metrics của một thiết bị theo khoảng thời gian.
+-- Index timestamp riêng hỗ trợ truy vấn theo thời gian
+-- trên toàn bộ thiết bị.
+-- ------------------------------------------------------------
 
-CREATE INDEX idx_metrics_device_time
-ON metrics(device_id, timestamp);
+CREATE INDEX idx_metrics_device_timestamp
+ON metrics(device_id, timestamp DESC);
 
-CREATE INDEX idx_metrics_interface_time
-ON metrics(device_id, interface_index, timestamp);
-
-
--- ============================================================
--- METRIC AGGREGATE
---
--- Phục vụ historical chart:
---   device + aggregation window + thời gian
---   interface + aggregation window + thời gian
--- ============================================================
-
-CREATE INDEX idx_metric_aggregate_device_window_time
-ON metric_aggregate(
-    device_id,
-    aggregation_window,
-    period_start
-);
-
-CREATE INDEX idx_metric_aggregate_interface_window_time
-ON metric_aggregate(
-    device_id,
-    interface_index,
-    aggregation_window,
-    period_start
-);
+CREATE INDEX idx_metrics_timestamp
+ON metrics(timestamp DESC);
 
 
--- ============================================================
+-- ------------------------------------------------------------
+-- METRIC_AGGREGATE
+-- UNIQUE INDEX ngăn tạo hai bản ghi cùng thiết bị,
+-- cùng khoảng tổng hợp và cùng thời điểm bắt đầu.
+-- ------------------------------------------------------------
+
+CREATE UNIQUE INDEX idx_metric_aggregate_period
+ON metric_aggregate(device_id, aggregation_window, period_start);
+
+CREATE INDEX idx_metric_aggregate_period_start
+ON metric_aggregate(period_start DESC);
+
+
+-- ------------------------------------------------------------
 -- SYSLOGS
--- ============================================================
+-- Tra cứu Syslog theo thời gian hoặc theo thiết bị và thời gian.
+-- ------------------------------------------------------------
 
-CREATE INDEX idx_syslogs_device_time
-ON syslogs(device_id, timestamp);
+CREATE INDEX idx_syslogs_received_at
+ON syslogs(received_at DESC);
 
-CREATE INDEX idx_syslogs_severity_time
-ON syslogs(severity, timestamp);
-
-
--- ============================================================
--- THRESHOLD RULES
--- ============================================================
-
-CREATE INDEX idx_threshold_rules_device
-ON threshold_rules(device_id);
-
-CREATE INDEX idx_threshold_rules_metric_type
-ON threshold_rules(metric_type);
-
-CREATE INDEX idx_threshold_rules_enabled
-ON threshold_rules(is_enabled);
+CREATE INDEX idx_syslogs_device_received_at
+ON syslogs(device_id, received_at DESC);
 
 
--- ============================================================
--- SYSLOG RULES
--- ============================================================
+-- ------------------------------------------------------------
+-- THRESHOLD_RULES
+-- Tìm quy tắc đang bật của một thiết bị.
+-- ------------------------------------------------------------
 
-CREATE INDEX idx_syslog_rules_device
-ON syslog_rules(device_id);
-
-CREATE INDEX idx_syslog_rules_enabled
-ON syslog_rules(is_enabled);
+CREATE INDEX idx_threshold_rules_device_enabled
+ON threshold_rules(device_id, is_enabled);
 
 
--- ============================================================
+-- ------------------------------------------------------------
+-- SYSLOG_RULES
+-- Tìm các quy tắc Syslog đang bật theo thiết bị.
+-- Quy tắc toàn hệ thống có device_id IS NULL.
+-- ------------------------------------------------------------
+
+CREATE INDEX idx_syslog_rules_device_enabled
+ON syslog_rules(device_id, is_enabled);
+
+
+-- ------------------------------------------------------------
 -- INCIDENTS
--- ============================================================
+-- Tìm incident theo trạng thái, thời gian, thiết bị
+-- hoặc các bản ghi nguồn đã tạo ra incident.
+-- ------------------------------------------------------------
 
-CREATE INDEX idx_incidents_device_time
-ON incidents(device_id, created_at);
+CREATE INDEX idx_incidents_status_created_at
+ON incidents(status, created_at DESC);
 
-CREATE INDEX idx_incidents_status
-ON incidents(status);
+CREATE INDEX idx_incidents_device
+ON incidents(device_id);
 
-CREATE INDEX idx_incidents_severity
-ON incidents(severity);
+CREATE INDEX idx_incidents_threshold_rule
+ON incidents(threshold_rule_id);
+
+CREATE INDEX idx_incidents_syslog_rule
+ON incidents(syslog_rule_id);
+
+CREATE INDEX idx_incidents_syslog
+ON incidents(syslog_id);
 
 
--- ============================================================
--- ARP / MAC TABLES
--- ============================================================
+-- ------------------------------------------------------------
+-- ARP_MAC_TABLES
+-- Tra cứu thiết bị theo địa chỉ IP hoặc địa chỉ MAC.
+-- ------------------------------------------------------------
 
-CREATE INDEX idx_arp_mac_ip
+CREATE INDEX idx_arp_mac_tables_ip
 ON arp_mac_tables(ip_address);
 
-CREATE INDEX idx_arp_mac_mac
+CREATE INDEX idx_arp_mac_tables_mac
 ON arp_mac_tables(mac_address);
 
-CREATE INDEX idx_arp_mac_device_interface
-ON arp_mac_tables(device_id, interface_index);
 
+-- ------------------------------------------------------------
+-- AUDIT_LOGS
+-- Tra cứu lịch sử theo thời gian hoặc theo người dùng.
+-- ------------------------------------------------------------
 
--- ============================================================
--- AUDIT LOGS
--- ============================================================
+CREATE INDEX idx_audit_logs_timestamp
+ON audit_logs(timestamp DESC);
 
-CREATE INDEX idx_audit_logs_user_time
-ON audit_logs(user_id, timestamp);
-
-CREATE INDEX idx_audit_logs_module_time
-ON audit_logs(module, timestamp);
+CREATE INDEX idx_audit_logs_user_timestamp
+ON audit_logs(user_id, timestamp DESC);

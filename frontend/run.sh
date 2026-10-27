@@ -1,42 +1,28 @@
 #!/bin/bash
 
-# =========================================================
-# Frontend Service Runner
-#
-# Cú pháp:
-#   ./run.sh <start|stop|restart|status|logs> <tên_service>
-#
-# Ví dụ:
-#   ./run.sh start frontend_service
-#   ./run.sh stop frontend_service
-#   ./run.sh restart frontend_service
-#   ./run.sh status frontend_service
-#   ./run.sh logs frontend_service
-# =========================================================
-
 ACTION=$1
 SERVICE_NAME=$2
-
 MAX_LOG_LINES=1000
-FRONTEND_PORT=3000
 
-# =========================================================
-# Kiểm tra cú pháp
-# =========================================================
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+SERVICE_DIR="$BASE_DIR/$SERVICE_NAME"
+LOG_DIR="$BASE_DIR/logs"
+LOG_FILE="$LOG_DIR/$SERVICE_NAME.log"
+
+NODE_DIR="$BASE_DIR/tools/node"
+NODE_VERSION="22.20.0"
+NODE_TAR="$BASE_DIR/tools/node.tar.xz"
 
 show_usage() {
     echo ""
-    echo "=== Cú pháp không hợp lệ ==="
-    echo ""
-    echo "Sử dụng:"
-    echo "  ./run.sh <start|stop|restart|status|logs> <tên_service>"
+    echo "Cú pháp: $0 <start|stop|restart|status|logs> <frontend_service>"
     echo ""
     echo "Ví dụ:"
-    echo "  ./run.sh start frontend_service"
-    echo "  ./run.sh stop frontend_service"
-    echo "  ./run.sh restart frontend_service"
-    echo "  ./run.sh status frontend_service"
-    echo "  ./run.sh logs frontend_service"
+    echo "  $0 start frontend_service"
+    echo "  $0 stop frontend_service"
+    echo "  $0 restart frontend_service"
+    echo "  $0 status frontend_service"
+    echo "  $0 logs frontend_service"
     echo ""
     exit 1
 }
@@ -45,759 +31,338 @@ if [ -z "$ACTION" ] || [ -z "$SERVICE_NAME" ]; then
     show_usage
 fi
 
-# =========================================================
-# Thư mục
-# =========================================================
-
-BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-LOG_DIR="$BASE_DIR/logs"
-PID_DIR="$BASE_DIR/pids"
-
-LOG_FILE="$LOG_DIR/${SERVICE_NAME}.log"
-PID_FILE="$PID_DIR/${SERVICE_NAME}.pid"
-ROTATOR_PID_FILE="$PID_DIR/${SERVICE_NAME}_rotator.pid"
+if [ "$SERVICE_NAME" != "frontend_service" ]; then
+    echo "Service không hợp lệ: $SERVICE_NAME"
+    show_usage
+fi
 
 mkdir -p "$LOG_DIR"
-mkdir -p "$PID_DIR"
 
-# =========================================================
-# Kiểm tra Node.js
-# =========================================================
+check_service_directory() {
+    if [ ! -d "$SERVICE_DIR" ]; then
+        echo "Không tìm thấy thư mục: $SERVICE_DIR"
+        exit 1
+    fi
+
+    if [ ! -f "$SERVICE_DIR/package.json" ]; then
+        echo "Không tìm thấy: $SERVICE_DIR/package.json"
+        exit 1
+    fi
+}
 
 check_node() {
+    if [ -x "$NODE_DIR/bin/node" ] && [ -x "$NODE_DIR/bin/npm" ]; then
+        export PATH="$NODE_DIR/bin:$PATH"
 
-    if [ ! -d "$BASE_DIR/tools/node" ]; then
-
-        echo ""
-        echo "=== Chưa thấy Node.js trong project. ==="
-        echo "=== Đang tự động tải Node.js 22 LTS... ==="
-        echo ""
-
-        mkdir -p "$BASE_DIR/tools"
-
-        curl -L \
-            -o "$BASE_DIR/tools/node.tar.xz" \
-            https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-x64.tar.xz
-
-        if [ $? -ne 0 ]; then
-            echo "=== LỖI: Không thể tải Node.js. ==="
-            exit 1
-        fi
-
-        echo ""
-        echo "=== Đang giải nén Node.js... ==="
-
-        tar -xJf \
-            "$BASE_DIR/tools/node.tar.xz" \
-            -C "$BASE_DIR/tools/"
-
-        if [ $? -ne 0 ]; then
-            echo "=== LỖI: Không thể giải nén Node.js. ==="
-            exit 1
-        fi
-
-        mv \
-            "$BASE_DIR/tools/node-v22.11.0-linux-x64" \
-            "$BASE_DIR/tools/node"
-
-        rm -f "$BASE_DIR/tools/node.tar.xz"
-
-        echo ""
-        echo "=== Cài đặt Node.js nội bộ thành công! ==="
-    fi
-
-    export PATH="$BASE_DIR/tools/node/bin:$PATH"
-
-    echo "=== Node.js: $(node --version) ==="
-    echo "=== npm: $(npm --version) ==="
-}
-
-# =========================================================
-# Kiểm tra PID service
-# =========================================================
-
-is_running() {
-
-    if [ -f "$PID_FILE" ]; then
-
-        PID=$(cat "$PID_FILE")
-
-        if [ -n "$PID" ] && ps -p "$PID" > /dev/null 2>&1; then
-            return 0
-        else
-            rm -f "$PID_FILE"
-        fi
-    fi
-
-    return 1
-}
-
-# =========================================================
-# Lấy process đang chiếm port
-# =========================================================
-
-get_port_pids() {
-
-    if command -v lsof > /dev/null 2>&1; then
-
-        lsof -ti :"$FRONTEND_PORT" 2>/dev/null
-
-    elif command -v fuser > /dev/null 2>&1; then
-
-        fuser "$FRONTEND_PORT"/tcp 2>/dev/null
-
-    else
-
-        ss -ltnp 2>/dev/null \
-            | grep ":$FRONTEND_PORT " \
-            | grep -o 'pid=[0-9]*' \
-            | cut -d= -f2
-    fi
-}
-
-# =========================================================
-# Kiểm tra port
-# =========================================================
-
-is_port_in_use() {
-
-    PORT_PIDS=$(get_port_pids)
-
-    if [ -n "$PORT_PIDS" ]; then
-        return 0
-    fi
-
-    return 1
-}
-
-# =========================================================
-# Hiển thị process đang chiếm port
-# =========================================================
-
-show_port_process() {
-
-    echo ""
-    echo "=== Process đang sử dụng port $FRONTEND_PORT ==="
-
-    if command -v lsof > /dev/null 2>&1; then
-
-        sudo lsof -i :"$FRONTEND_PORT"
-
-    else
-
-        ss -ltnp | grep ":$FRONTEND_PORT "
-    fi
-
-    echo ""
-}
-
-# =========================================================
-# Kill process tree
-# =========================================================
-
-kill_process_tree() {
-
-    TARGET_PID=$1
-    SIGNAL=$2
-
-    if [ -z "$TARGET_PID" ]; then
+        echo "Node: $(node --version)"
+        echo "npm : $(npm --version)"
         return
     fi
 
-    if ! ps -p "$TARGET_PID" > /dev/null 2>&1; then
+    if command -v node >/dev/null 2>&1 && \
+       command -v npm >/dev/null 2>&1; then
+
+        echo "Node: $(node --version)"
+        echo "npm : $(npm --version)"
         return
     fi
 
-    # Lấy tất cả process con
-    CHILDREN=$(pgrep -P "$TARGET_PID" 2>/dev/null)
+    echo ""
+    echo "Chưa có Node.js."
+    echo "Đang tải Node.js $NODE_VERSION..."
+    echo ""
 
-    for CHILD_PID in $CHILDREN; do
+    mkdir -p "$BASE_DIR/tools"
 
-        # Kill tiếp process con của process này
-        kill_process_tree "$CHILD_PID" "$SIGNAL"
+    curl -L \
+        -o "$NODE_TAR" \
+        "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" || {
+        echo ""
+        echo "Không thể tải Node.js."
+        exit 1
+    }
 
-    done
+    rm -rf "$NODE_DIR"
 
-    kill -"$SIGNAL" "$TARGET_PID" > /dev/null 2>&1
+    tar -xJf "$NODE_TAR" \
+        -C "$BASE_DIR/tools" || {
+        echo "Không thể giải nén Node.js."
+        rm -f "$NODE_TAR"
+        exit 1
+    }
+
+    EXTRACTED_NODE="$BASE_DIR/tools/node-v${NODE_VERSION}-linux-x64"
+
+    if [ ! -d "$EXTRACTED_NODE" ]; then
+        echo "Không tìm thấy Node.js sau khi giải nén."
+        rm -f "$NODE_TAR"
+        exit 1
+    fi
+
+    mv "$EXTRACTED_NODE" "$NODE_DIR"
+    rm -f "$NODE_TAR"
+
+    export PATH="$NODE_DIR/bin:$PATH"
+
+    echo ""
+    echo "Node.js cài đặt thành công."
+    echo "Node: $(node --version)"
+    echo "npm : $(npm --version)"
 }
 
-# =========================================================
-# Log rotator
-# =========================================================
+get_service_pid() {
+    for PROC in /proc/[0-9]*; do
+        PID="${PROC##*/}"
 
-start_log_rotator() {
+        [ "$PID" = "$$" ] && continue
+        [ -r "$PROC/cmdline" ] || continue
 
-    # Nếu rotator cũ còn chạy thì không tạo thêm
-    if [ -f "$ROTATOR_PID_FILE" ]; then
+        CWD=$(readlink -f "$PROC/cwd" 2>/dev/null) || continue
+        [ "$CWD" = "$SERVICE_DIR" ] || continue
 
-        OLD_ROTATOR_PID=$(cat "$ROTATOR_PID_FILE")
+        CMD=$(tr '\0' ' ' < "$PROC/cmdline" 2>/dev/null)
 
-        if [ -n "$OLD_ROTATOR_PID" ] && \
-           ps -p "$OLD_ROTATOR_PID" > /dev/null 2>&1; then
-
+        if echo "$CMD" | grep -Eq '(^|/)npm start($| )'; then
+            echo "$PID"
             return
         fi
-
-        rm -f "$ROTATOR_PID_FILE"
-    fi
-
-    (
-        while true; do
-
-            sleep 10
-
-            if [ -f "$LOG_FILE" ]; then
-
-                LINE_COUNT=$(wc -l < "$LOG_FILE")
-
-                if [ "$LINE_COUNT" -gt "$MAX_LOG_LINES" ]; then
-
-                    TMP_FILE="${LOG_FILE}.tmp"
-
-                    tail -n "$MAX_LOG_LINES" \
-                        "$LOG_FILE" > "$TMP_FILE"
-
-                    mv "$TMP_FILE" "$LOG_FILE"
-                fi
-            fi
-
-        done
-    ) &
-
-    ROTATOR_PID=$!
-
-    echo "$ROTATOR_PID" > "$ROTATOR_PID_FILE"
+    done
 }
 
-# =========================================================
-# Stop log rotator
-# =========================================================
+kill_tree() {
+    local PID=$1
 
-stop_log_rotator() {
+    [ -z "$PID" ] && return
+    kill -0 "$PID" 2>/dev/null || return
 
-    if [ -f "$ROTATOR_PID_FILE" ]; then
+    CHILDREN=$(pgrep -P "$PID" 2>/dev/null)
 
-        R_PID=$(cat "$ROTATOR_PID_FILE")
-
-        if [ -n "$R_PID" ] && \
-           ps -p "$R_PID" > /dev/null 2>&1; then
-
-            kill "$R_PID" > /dev/null 2>&1
-
-            sleep 1
-
-            if ps -p "$R_PID" > /dev/null 2>&1; then
-                kill -9 "$R_PID" > /dev/null 2>&1
-            fi
-        fi
-
-        rm -f "$ROTATOR_PID_FILE"
-    fi
-}
-
-# =========================================================
-# Dọn process React đang chiếm port
-# =========================================================
-
-cleanup_port() {
-
-    PORT_PIDS=$(get_port_pids)
-
-    if [ -z "$PORT_PIDS" ]; then
-        return
-    fi
-
-    echo ""
-    echo "=== Phát hiện process đang chiếm port $FRONTEND_PORT ==="
-
-    for PORT_PID in $PORT_PIDS; do
-
-        echo "=== PID: $PORT_PID ==="
-
-        # Không kill chính shell/run.sh
-        if [ "$PORT_PID" = "$$" ]; then
-            continue
-        fi
-
-        kill_process_tree "$PORT_PID" "TERM"
+    for CHILD in $CHILDREN; do
+        kill_tree "$CHILD"
     done
 
-    echo "=== Đang chờ process dừng... ==="
-
-    for i in {1..5}; do
-
-        if ! is_port_in_use; then
-            break
-        fi
-
-        sleep 1
-    done
-
-    # Nếu vẫn còn process -> kill -9
-    PORT_PIDS=$(get_port_pids)
-
-    if [ -n "$PORT_PIDS" ]; then
-
-        echo "=== Process vẫn còn chạy. Đang kill -9... ==="
-
-        for PORT_PID in $PORT_PIDS; do
-
-            if [ "$PORT_PID" = "$$" ]; then
-                continue
-            fi
-
-            kill_process_tree "$PORT_PID" "KILL"
-        done
-    fi
-
-    sleep 1
-
-    if is_port_in_use; then
-
-        echo "=== LỖI: Không thể giải phóng port $FRONTEND_PORT ==="
-
-        show_port_process
-
-        return 1
-    fi
-
-    echo "=== Đã giải phóng port $FRONTEND_PORT ==="
-
-    return 0
+    kill "$PID" 2>/dev/null
 }
 
-# =========================================================
-# START SERVICE
-# =========================================================
+trim_log() {
+    [ -f "$LOG_FILE" ] || touch "$LOG_FILE"
+
+    LINE_COUNT=$(wc -l < "$LOG_FILE")
+
+    if [ "$LINE_COUNT" -gt "$MAX_LOG_LINES" ]; then
+        tail -n "$MAX_LOG_LINES" "$LOG_FILE" > "$LOG_FILE.tmp"
+        cat "$LOG_FILE.tmp" > "$LOG_FILE"
+        rm -f "$LOG_FILE.tmp"
+    fi
+}
 
 start_service() {
-
     echo ""
     echo "========================================================="
-    echo "              START FRONTEND SERVICE"
+    echo " START $SERVICE_NAME"
     echo "========================================================="
     echo ""
 
-    # -------------------------------------------------------
-    # Kiểm tra service đã chạy theo PID
-    # -------------------------------------------------------
+    check_service_directory
+    check_node
 
-    if is_running; then
+    SERVICE_PID=$(get_service_pid)
 
-        PID=$(cat "$PID_FILE")
-
-        echo "=== Frontend Service '$SERVICE_NAME' đang chạy ==="
-        echo "=== PID: $PID ==="
-        echo "=== Port: $FRONTEND_PORT ==="
+    if [ -n "$SERVICE_PID" ]; then
         echo ""
-
+        echo "Frontend $SERVICE_NAME đang chạy."
+        echo ""
+        echo "PID: $SERVICE_PID"
+        echo ""
         return 0
     fi
 
-    # -------------------------------------------------------
-    # Kiểm tra thư mục frontend
-    # -------------------------------------------------------
+    trim_log
 
-    if [ ! -d "$BASE_DIR/$SERVICE_NAME" ]; then
-
-        echo "=== LỖI: Thư mục '$SERVICE_NAME' không tồn tại! ==="
-        echo "=== Đường dẫn mong muốn: $BASE_DIR/$SERVICE_NAME ==="
-
-        exit 1
-    fi
-
-    # -------------------------------------------------------
-    # Node.js
-    # -------------------------------------------------------
-
-    check_node
-
-    # -------------------------------------------------------
-    # Kiểm tra port 3000
-    # -------------------------------------------------------
-
-    if is_port_in_use; then
-
+    {
         echo ""
-        echo "=== LỖI: Port $FRONTEND_PORT đang được sử dụng! ==="
+        echo "========================================================="
+        echo " STARTING $SERVICE_NAME"
+        echo " Time: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "========================================================="
+    } >> "$LOG_FILE"
 
-        show_port_process
+    cd "$SERVICE_DIR" || exit 1
 
-        echo "=== Service chưa được khởi động. ==="
-        echo "=== Hãy chạy: ./run.sh stop $SERVICE_NAME ==="
-        echo ""
+    echo ""
+    echo "Đang khởi chạy '$SERVICE_NAME'..."
+    echo ""
 
-        exit 1
-    fi
-
-    # -------------------------------------------------------
-    # Vào thư mục frontend
-    # -------------------------------------------------------
-
-    cd "$BASE_DIR/$SERVICE_NAME" || exit 1
-
-    # -------------------------------------------------------
-    # npm install
-    # -------------------------------------------------------
-
-    if [ ! -d "node_modules" ]; then
-
-        echo ""
-        echo "=== Chưa có node_modules trong $SERVICE_NAME ==="
-        echo "=== Đang chạy npm install... ==="
-        echo ""
-
-        npm install
-
-        if [ $? -ne 0 ]; then
-
-            echo ""
-            echo "=== LỖI: npm install thất bại! ==="
-
-            exit 1
+    # Ghi log liên tục và dùng cat để ghi đè giữ nguyên i-node không bị mất liên kết
+    nohup bash -c "npm start 2>&1 | while IFS= read -r line; do
+        echo \"\$line\" >> \"$LOG_FILE\"
+        if [ \$(wc -l < \"$LOG_FILE\") -gt $MAX_LOG_LINES ]; then
+            tail -n $MAX_LOG_LINES \"$LOG_FILE\" > \"$LOG_FILE.tmp\"
+            cat \"$LOG_FILE.tmp\" > \"$LOG_FILE\"
+            rm -f \"$LOG_FILE.tmp\"
         fi
-    fi
+    done" >/dev/null 2>&1 &
 
-    # -------------------------------------------------------
-    # Xóa PID cũ nếu có
-    # -------------------------------------------------------
+    NPM_PID=$!
 
-    rm -f "$PID_FILE"
+    echo "npm PID: $NPM_PID"
+    echo "Đang chờ frontend khởi động..."
 
-    # -------------------------------------------------------
-    # Start React
-    # -------------------------------------------------------
-
-    echo ""
-    echo "=== Đang khởi chạy ngầm ReactJS... ==="
-    echo "=== Service: $SERVICE_NAME ==="
-    echo "=== Port: $FRONTEND_PORT ==="
-    echo ""
-
-    nohup npm start > "$LOG_FILE" 2>&1 &
-
-    NEW_PID=$!
-
-    echo "$NEW_PID" > "$PID_FILE"
-
-    echo "=== npm PID: $NEW_PID ==="
-
-    # -------------------------------------------------------
-    # Start log rotator
-    # -------------------------------------------------------
-
-    start_log_rotator
-
-    # -------------------------------------------------------
-    # Chờ React khởi động
-    # -------------------------------------------------------
-
-    echo "=== Đang chờ ReactJS khởi động... ==="
-
-    STARTED=false
-
-    for i in {1..15}; do
-
+    for i in {1..30}; do
         sleep 1
 
-        if is_port_in_use; then
-            STARTED=true
+        SERVICE_PID=$(get_service_pid)
+
+        if [ -n "$SERVICE_PID" ]; then
+            echo ""
+            echo ""
+            echo "========================================================="
+            echo " START THÀNH CÔNG"
+            echo "========================================================="
+            echo "Service: $SERVICE_NAME"
+            echo "PID    : $SERVICE_PID"
+            echo "Log    : $LOG_FILE (duy trì tối đa $MAX_LOG_LINES dòng mới nhất)"
+            echo "========================================================="
+            echo ""
+            return 0
+        fi
+
+        if ! kill -0 "$NPM_PID" 2>/dev/null; then
             break
         fi
 
-        # npm chết trước khi React start
-        if ! ps -p "$NEW_PID" > /dev/null 2>&1; then
-            break
-        fi
+        printf "."
     done
 
-    # -------------------------------------------------------
-    # Kiểm tra kết quả
-    # -------------------------------------------------------
+    echo ""
+    echo ""
+    echo "START thất bại."
+    echo ""
+    tail -n 50 "$LOG_FILE"
 
-    if [ "$STARTED" = true ]; then
+    if kill -0 "$NPM_PID" 2>/dev/null; then
+        kill_tree "$NPM_PID"
+    fi
 
+    exit 1
+}
+
+stop_service() {
+    echo ""
+    echo "========================================================="
+    echo " STOP $SERVICE_NAME"
+    echo "========================================================="
+    echo ""
+
+    SERVICE_PID=$(get_service_pid)
+
+    if [ -z "$SERVICE_PID" ]; then
+        echo "Frontend $SERVICE_NAME không chạy."
+        echo ""
+        return 0
+    fi
+
+    echo "PID: $SERVICE_PID"
+    echo ""
+
+    kill_tree "$SERVICE_PID"
+
+    sleep 2
+
+    SERVICE_PID=$(get_service_pid)
+
+    if [ -n "$SERVICE_PID" ]; then
+        echo ""
+        echo "STOP chưa hoàn tất, đang force kill..."
+
+        kill -9 "$SERVICE_PID" 2>/dev/null
+
+        sleep 1
+    fi
+
+    if [ -z "$(get_service_pid)" ]; then
         echo ""
         echo "========================================================="
-        echo "        FRONTEND STARTED SUCCESSFULLY"
-        echo "========================================================="
-        echo "Service : $SERVICE_NAME"
-        echo "PID     : $NEW_PID"
-        echo "Port    : $FRONTEND_PORT"
-        echo "Log     : $LOG_FILE"
+        echo " STOP THÀNH CÔNG"
         echo "========================================================="
         echo ""
-
     else
-
         echo ""
-        echo "========================================================="
-        echo "             FRONTEND START FAILED"
-        echo "========================================================="
-
+        echo "STOP thất bại."
         echo ""
-        echo "=== Kiểm tra log: ==="
-        echo ""
-
-        tail -n 30 "$LOG_FILE"
-
-        echo ""
-        echo "========================================================="
-
-        rm -f "$PID_FILE"
-
-        stop_log_rotator
-
         exit 1
     fi
 }
 
-# =========================================================
-# STOP SERVICE
-# =========================================================
-
-stop_service() {
-
-    echo ""
-    echo "========================================================="
-    echo "               STOP FRONTEND SERVICE"
-    echo "========================================================="
-    echo ""
-
-    stop_log_rotator
-
-    # -------------------------------------------------------
-    # Stop bằng PID file
-    # -------------------------------------------------------
-
-    if [ -f "$PID_FILE" ]; then
-
-        PID=$(cat "$PID_FILE")
-
-        if [ -n "$PID" ] && \
-           ps -p "$PID" > /dev/null 2>&1; then
-
-            echo "=== Đang dừng '$SERVICE_NAME' ==="
-            echo "=== PID: $PID ==="
-
-            # Kill toàn bộ process tree bằng TERM
-            kill_process_tree "$PID" "TERM"
-
-            echo "=== Đang chờ process dừng... ==="
-
-            for i in {1..10}; do
-
-                if ! ps -p "$PID" > /dev/null 2>&1; then
-                    break
-                fi
-
-                sleep 1
-            done
-
-            # Nếu npm vẫn còn -> KILL
-            if ps -p "$PID" > /dev/null 2>&1; then
-
-                echo "=== Service chưa dừng hẳn ==="
-                echo "=== Đang thực hiện kill -9... ==="
-
-                kill_process_tree "$PID" "KILL"
-
-                sleep 1
-            fi
-
-        else
-
-            echo "=== PID file tồn tại nhưng process không còn. ==="
-        fi
-
-        rm -f "$PID_FILE"
-
-    else
-
-        echo "=== Không tìm thấy PID file của '$SERVICE_NAME'. ==="
-    fi
-
-    # -------------------------------------------------------
-    # QUAN TRỌNG:
-    # Kiểm tra port 3000 vì React có thể vẫn còn process
-    # -------------------------------------------------------
-
-    if is_port_in_use; then
-
-        echo ""
-        echo "=== Phát hiện process React vẫn đang chiếm port $FRONTEND_PORT ==="
-
-        cleanup_port
-
-        if [ $? -ne 0 ]; then
-
-            echo ""
-            echo "=== LỖI: Không thể giải phóng port $FRONTEND_PORT ==="
-
-            show_port_process
-
-            exit 1
-        fi
-    fi
-
-    # -------------------------------------------------------
-    # Cleanup
-    # -------------------------------------------------------
-
-    rm -f "$PID_FILE"
-    rm -f "$ROTATOR_PID_FILE"
-
-    echo ""
-    echo "========================================================="
-    echo "        FRONTEND SERVICE STOPPED SUCCESSFULLY"
-    echo "========================================================="
-    echo "Service : $SERVICE_NAME"
-    echo "Port    : $FRONTEND_PORT"
-    echo "========================================================="
-    echo ""
+restart_service() {
+    stop_service
+    sleep 2
+    start_service
 }
-
-# =========================================================
-# STATUS SERVICE
-# =========================================================
 
 status_service() {
-
     echo ""
     echo "========================================================="
-    echo "              FRONTEND SERVICE STATUS"
+    echo " STATUS $SERVICE_NAME"
     echo "========================================================="
     echo ""
 
-    # -------------------------------------------------------
-    # PID service
-    # -------------------------------------------------------
+    SERVICE_PID=$(get_service_pid)
 
-    if is_running; then
-
-        PID=$(cat "$PID_FILE")
-
-        echo "Service : $SERVICE_NAME"
-        echo "Status  : RUNNING"
-        echo "PID     : $PID"
-
-    else
-
-        echo "Service : $SERVICE_NAME"
-        echo "Status  : STOPPED"
-    fi
-
-    # -------------------------------------------------------
-    # Port
-    # -------------------------------------------------------
-
+    echo "Service: $SERVICE_NAME"
     echo ""
 
-    if is_port_in_use; then
-
-        PORT_PIDS=$(get_port_pids)
-
-        echo "Port    : $FRONTEND_PORT"
-        echo "Status  : IN USE"
-        echo "PID     : $PORT_PIDS"
-
+    if [ -n "$SERVICE_PID" ]; then
+        echo "Frontend: RUNNING"
+        echo "PID     : $SERVICE_PID"
     else
-
-        echo "Port    : $FRONTEND_PORT"
-        echo "Status  : FREE"
+        echo "Frontend: STOPPED"
     fi
 
-    # -------------------------------------------------------
-    # Log
-    # -------------------------------------------------------
-
     echo ""
-    echo "Log     : $LOG_FILE"
 
     if [ -f "$LOG_FILE" ]; then
-
-        LINE_COUNT=$(wc -l < "$LOG_FILE")
-
-        echo "Lines   : $LINE_COUNT / $MAX_LOG_LINES"
-
+        echo "Log  : $LOG_FILE"
+        echo "Lines: $(wc -l < "$LOG_FILE") / $MAX_LOG_LINES dòng mới nhất"
     else
-
-        echo "Log     : Chưa tồn tại"
+        echo "Log  : Chưa có"
     fi
 
     echo ""
-    echo "========================================================="
-    echo ""
 }
-
-# =========================================================
-# VIEW LOGS
-# =========================================================
 
 view_logs() {
-
-    if [ -f "$LOG_FILE" ]; then
-
-        echo ""
-        echo "========================================================="
-        echo "              FRONTEND SERVICE LOGS"
-        echo "========================================================="
-        echo "Service: $SERVICE_NAME"
-        echo "File   : $LOG_FILE"
-        echo ""
-        echo "Nhấn Ctrl+C để thoát."
-        echo "========================================================="
-        echo ""
-
-        tail -f -n 100 "$LOG_FILE"
-
-    else
-
-        echo ""
-        echo "=== LỖI: Chưa có file log ==="
-        echo "=== $LOG_FILE ==="
-        echo ""
+    if [ ! -f "$LOG_FILE" ]; then
+        echo "Chưa có log: $LOG_FILE"
+        return 0
     fi
+
+    echo ""
+    echo "=== LOGS $SERVICE_NAME ($MAX_LOG_LINES DÒNG MỚI NHẤT) ==="
+    echo "File: $LOG_FILE"
+    echo "Nhấn Ctrl+C để thoát."
+    echo ""
+
+    tail -f -n "$MAX_LOG_LINES" "$LOG_FILE"
 }
 
-# =========================================================
-# MAIN
-# =========================================================
-
 case "$ACTION" in
-
     start)
         start_service
         ;;
-
     stop)
         stop_service
         ;;
-
     restart)
-
-        echo ""
-        echo "=== Đang restart Frontend Service '$SERVICE_NAME'... ==="
-        echo ""
-
-        stop_service
-
-        sleep 2
-
-        start_service
+        restart_service
         ;;
-
     status)
         status_service
         ;;
-
     logs)
         view_logs
         ;;
-
     *)
         show_usage
         ;;
-
 esac

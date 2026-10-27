@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.network_monitor.portal_service.mapper.DeviceCredentialMapper">
+
+    <resultMap id="DeviceResultMap"
+               type="com.network_monitor.portal_service.model.entity.Device">
+        <id property="id" column="id"/>
+        <result property="deviceName" column="device_name"/>
+        <result property="ipAddress" column="ip_address"/>
+        <result property="deviceType" column="device_type"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="SearchWhereClause">
+        <where>
+            <if test="keyword != null and keyword.trim() != ''">
+                (
+                    d.device_name ILIKE CONCAT('%', #{keyword}, '%')
+                    OR CAST(d.ip_address AS TEXT) ILIKE CONCAT('%', #{keyword}, '%')
+                    OR d.device_type ILIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+        </where>
+    </sql>
+
+    <select id="searchDevices" resultMap="DeviceResultMap">
+        SELECT
+            d.id,
+            d.device_name,
+            d.ip_address,
+            d.device_type,
+            d.status,
+            d.created_at,
+            d.updated_at
+        FROM devices d
+
+        <include refid="SearchWhereClause"/>
+
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'id'">d.id</when>
+            <when test="sortBy == 'deviceName'">d.device_name</when>
+            <when test="sortBy == 'ipAddress'">d.ip_address</when>
+            <when test="sortBy == 'deviceType'">d.device_type</when>
+            <when test="sortBy == 'status'">d.status</when>
+            <when test="sortBy == 'createdAt'">d.created_at</when>
+            <when test="sortBy == 'updatedAt'">d.updated_at</when>
+            <otherwise>d.created_at</otherwise>
+        </choose>
+
+        <choose>
+            <when test="direction != null and direction.toUpperCase() == 'ASC'">
+                ASC
+            </when>
+            <otherwise>DESC</otherwise>
+        </choose>
+
+        LIMIT #{limit}
+        OFFSET #{offset}
+    </select>
+
+    <select id="countSearchDevices" resultType="long">
+        SELECT COUNT(*)
+        FROM devices d
+        <include refid="SearchWhereClause"/>
+    </select>
+
+</mapper>

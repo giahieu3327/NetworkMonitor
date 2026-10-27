@@ -35,7 +35,6 @@ spring:
       hibernate:
         format_sql: true
         physical_naming_strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
-    show-sql: true
 
   # ============================================================
   # 4. Flyway Migration
@@ -82,16 +81,25 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
     consumer:
-      group-id: application-group
+      group-id: portal-group
       auto-offset-reset: earliest
+      enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: "*"
+        spring.json.trusted.packages: "com.network_monitor.portal_service.model.dto.kafka"
+        spring.json.value.default.type: "com.network_monitor.portal_service.model.dto.kafka.KafkaMessage"
 
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+      retries: 4
+      retry-backoff-ms: 100
+
+    listener:
+      ack-mode: record
 
   # ============================================================
   # 9. Mail - Stalwart
@@ -208,41 +216,9 @@ springdoc:
     enabled: true
     path: /swagger-ui.html
 
-  # ============================================================
-  # Hiển thị Spring Boot Actuator trong Swagger
-  # ============================================================
-  show-actuator: true
-
 
 # ==============================================================
-# 17. Spring Boot Actuator
-# ==============================================================
-management:
-  endpoints:
-    web:
-      # Base URL:
-      # http://localhost:5000/actuator
-      base-path: /actuator
-
-      # Expose TẤT CẢ actuator endpoints
-      #
-      # Lưu ý: phải đặt "*" trong dấu ngoặc kép trong YAML.
-      exposure:
-        include: "*"
-
-  endpoint:
-    health:
-      # Hiển thị chi tiết health check
-      show-details: always
-      show-components: always
-
-  info:
-    env:
-      enabled: true
-
-
-# ==============================================================
-# 18. Application information
+# 17. Application information
 # ==============================================================
 info:
   app:
@@ -252,14 +228,17 @@ info:
 
 
 # ==============================================================
-# 19. Logging
+# 18. Logging
 # ==============================================================
 logging:
   level:
-    root: INFO
-    org.springframework.security: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.hibernate.orm.schema: TRACE
-    org.hibernate.tool.schema: TRACE
-    org.camunda.bpm.engine: INFO
+    root: WARN
     com.network_monitor.portal_service: DEBUG
+    org.springframework.boot: INFO
+    org.springframework: WARN
+    org.springframework.security: WARN
+    org.springframework.kafka: WARN
+    org.apache.kafka: WARN
+    org.hibernate: WARN
+    org.camunda.bpm.engine: WARN
+    org.mybatis: WARN

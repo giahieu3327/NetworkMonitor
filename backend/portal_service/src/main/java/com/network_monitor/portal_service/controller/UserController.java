@@ -59,7 +59,7 @@ public class UserController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
-    public ResponseEntity<Page<UserResponse>> getUsers(@ModelAttribute UserSearchRequest request) {
+    public ResponseEntity<Page<UserResponse>> getUsers(@ModelAttribute SearchRequest request) {
         Sort sort = request.getDirection().equalsIgnoreCase("asc")
                 ? Sort.by(request.getSortBy()).ascending()
                 : Sort.by(request.getSortBy()).descending();

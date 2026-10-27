@@ -12,13 +12,16 @@ import java.util.Optional;
 public interface DeviceInterfaceRepository
         extends JpaRepository<DeviceInterface, DeviceInterfaceId> {
 
+    // Lấy danh sách interface của một thiết bị.
     List<DeviceInterface> findByDeviceId(Long deviceId);
 
+    // Tìm interface theo ID thiết bị và chỉ số interface.
     Optional<DeviceInterface> findByDeviceIdAndInterfaceIndex(
             Long deviceId,
             Integer interfaceIndex
     );
 
+    // Tìm interface theo ID thiết bị và tên interface.
     Optional<DeviceInterface> findByDeviceIdAndInterfaceName(
             Long deviceId,
             String interfaceName

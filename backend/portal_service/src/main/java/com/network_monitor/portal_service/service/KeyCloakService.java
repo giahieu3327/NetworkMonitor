@@ -1,6 +1,5 @@
 package com.network_monitor.portal_service.service;
 
-import com.network_monitor.portal_service.model.dto.request.*;
 import com.network_monitor.portal_service.model.dto.response.*;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.RealmResource;

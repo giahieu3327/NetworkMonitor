@@ -1,17 +1,25 @@
+
 package com.network_monitor.portal_service.controller;
 
 import com.network_monitor.portal_service.model.dto.request.DeviceRequest;
+import com.network_monitor.portal_service.model.dto.request.SearchRequest;
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
 import com.network_monitor.portal_service.model.dto.response.DeviceResponse;
 import com.network_monitor.portal_service.service.DeviceService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.MediaType;
+import org.springframework.http.HttpHeaders;
+import java.io.IOException;
 
-import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/devices")
@@ -20,68 +28,112 @@ public class DeviceController {
 
     private final DeviceService deviceService;
 
-    // 1. Thêm 1 hoặc nhiều thiết bị
     @PostMapping
-    public ResponseEntity<ApiResponse<Void>> createDevices(
-            @RequestBody List<@Valid DeviceRequest> requests) {
+    public ResponseEntity<ApiResponse<DeviceResponse>> createDevice(
+            @Valid @RequestBody DeviceRequest request
+    ) {
+        ApiResponse<DeviceResponse> response =
+                deviceService.createDevice(request);
 
-        ApiResponse<Void> response = deviceService.createDevices(requests);
-
-        if (response.isSuccess()) {
-            return ResponseEntity
-                    .status(HttpStatus.CREATED)
-                    .body(response);
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
         }
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    // 2. Cập nhật 1 thiết bị theo ID
+    @PostMapping(
+            value = "/import",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ResponseEntity<ApiResponse<Map<String, Object>>> createDevicesFromExcel(
+            @RequestParam("file") MultipartFile file
+    ) {
+        ApiResponse<Map<String, Object>> response =
+                deviceService.createDevicesFromExcel(file);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportDevicesToExcel() throws IOException {
+        byte[] file = deviceService.exportDevicesToExcel();
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"devices.xlsx\""
+                )
+                .body(file);
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> updateDevice(
             @PathVariable Long id,
             @Valid @RequestBody DeviceRequest request
     ) {
-        ApiResponse<Void> response = deviceService.updateDevice(id, request);
+        ApiResponse<Void> response =
+                deviceService.updateDevice(id, request);
 
-        if (response.isSuccess()) {
-            return ResponseEntity.ok(response);
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
         }
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(response);
+        return ResponseEntity.ok(response);
     }
 
-    // 3. Xóa nhiều thiết bị
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteDevice(
+            @PathVariable Long id
+    ) {
+        ApiResponse<Void> response =
+                deviceService.deleteDevice(id);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping
-    public ResponseEntity<ApiResponse<Void>> deleteDevices(
-            @RequestBody List<Long> ids
-    ) {
-        ApiResponse<Void> response = deviceService.deleteDevices(ids);
+    public ResponseEntity<ApiResponse<Void>> deleteAllDevices() {
+        ApiResponse<Void> response =
+                deviceService.deleteAllDevices();
 
-        if (response.isSuccess()) {
-            return ResponseEntity.ok(response);
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
         }
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(response);
+        return ResponseEntity.ok(response);
     }
 
-    // 4. Lấy tất cả thiết bị
     @GetMapping
-    public ResponseEntity<List<DeviceResponse>> getAllDevices() {
-        return ResponseEntity.ok(deviceService.getAllDevices());
+    public ResponseEntity<Page<DeviceResponse>> getDevices(
+            @ModelAttribute SearchRequest request
+    ) {
+        return ResponseEntity.ok(deviceService.getDevices(request));
     }
 
-    // 5. Lấy thiết bị theo ID
-    @GetMapping("/{ids}")
-    public ResponseEntity<List<DeviceResponse>> getDevicesByIds(
-            @PathVariable List<Long> ids
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<DeviceResponse>> getDeviceById(
+            @PathVariable Long id
     ) {
-        return ResponseEntity.ok(deviceService.getDevicesByIds(ids));
+        ApiResponse<DeviceResponse> response =
+                deviceService.getDeviceById(id);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(response);
+        }
+
+        return ResponseEntity.ok(response);
     }
 }

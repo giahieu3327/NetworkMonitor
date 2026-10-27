@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.network_monitor.portal_service.mapper.OidConfigMapper">
+
+    <resultMap id="OidConfigEntityMap"
+               type="com.network_monitor.portal_service.model.entity.OidConfig">
+
+        <id property="id" column="id"/>
+
+        <result property="metricScope" column="metric_scope"/>
+        <result property="metricType" column="metric_type"/>
+        <result property="oidPattern" column="oid_pattern"/>
+        <result property="dataType" column="data_type"/>
+        <result property="multiplier" column="multiplier"/>
+        <result property="interfaceIndex" column="interface_index"/>
+        <result property="isActive" column="is_active"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+
+        <association property="device"
+                     javaType="com.network_monitor.portal_service.model.entity.Device">
+            <id property="id" column="device_id"/>
+        </association>
+
+    </resultMap>
+
+    <sql id="OidConfigWhereClause">
+        oc.device_id = #{deviceId}
+
+        <if test="keyword != null and keyword.trim() != ''">
+            AND (
+                CAST(oc.id AS TEXT) ILIKE CONCAT('%', #{keyword}, '%')
+                OR oc.metric_scope ILIKE CONCAT('%', #{keyword}, '%')
+                OR oc.metric_type ILIKE CONCAT('%', #{keyword}, '%')
+                OR oc.oid_pattern ILIKE CONCAT('%', #{keyword}, '%')
+                OR oc.data_type ILIKE CONCAT('%', #{keyword}, '%')
+                OR CAST(oc.multiplier AS TEXT)
+                    ILIKE CONCAT('%', #{keyword}, '%')
+                OR CAST(oc.interface_index AS TEXT)
+                    ILIKE CONCAT('%', #{keyword}, '%')
+                OR CAST(oc.is_active AS TEXT)
+                    ILIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <select id="findByDeviceId" resultMap="OidConfigEntityMap">
+        SELECT
+            oc.id,
+            oc.metric_scope,
+            oc.metric_type,
+            oc.oid_pattern,
+            oc.data_type,
+            oc.multiplier,
+            oc.device_id,
+            oc.interface_index,
+            oc.is_active,
+            oc.created_at,
+            oc.updated_at
+        FROM oid_configs oc
+
+        WHERE <include refid="OidConfigWhereClause"/>
+
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'id'">oc.id</when>
+            <when test="sortBy == 'metricScope'">oc.metric_scope</when>
+            <when test="sortBy == 'metricType'">oc.metric_type</when>
+            <when test="sortBy == 'oidPattern'">oc.oid_pattern</when>
+            <when test="sortBy == 'dataType'">oc.data_type</when>
+            <when test="sortBy == 'multiplier'">oc.multiplier</when>
+            <when test="sortBy == 'deviceId'">oc.device_id</when>
+            <when test="sortBy == 'interfaceIndex'">oc.interface_index</when>
+            <when test="sortBy == 'isActive'">oc.is_active</when>
+            <when test="sortBy == 'createdAt'">oc.created_at</when>
+            <when test="sortBy == 'updatedAt'">oc.updated_at</when>
+            <otherwise>oc.created_at</otherwise>
+        </choose>
+
+        <choose>
+            <when test="direction != null and direction.toUpperCase() == 'ASC'">
+                ASC
+            </when>
+            <otherwise>DESC</otherwise>
+        </choose>
+
+        LIMIT #{limit}
+        OFFSET #{offset}
+    </select>
+
+    <select id="countByDeviceId" resultType="long">
+        SELECT COUNT(*)
+        FROM oid_configs oc
+        WHERE <include refid="OidConfigWhereClause"/>
+    </select>
+
+</mapper>

@@ -1,7 +1,6 @@
 package com.network_monitor.portal_service.util;
 
 import com.network_monitor.portal_service.model.dto.request.*;
-import com.network_monitor.portal_service.model.dto.response.*;
 import lombok.experimental.UtilityClass;
 import org.springframework.core.io.ClassPathResource;
 

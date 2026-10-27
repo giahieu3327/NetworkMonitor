@@ -5,7 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.Map;
 
 @Entity
@@ -17,10 +17,13 @@ import java.util.Map;
 @Builder
 public class Metric {
 
+    // ID bản ghi metric, tự động tăng bằng BIGSERIAL.
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
+    // Thiết bị phát sinh dữ liệu metric.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "device_id",
@@ -28,23 +31,21 @@ public class Metric {
     )
     private Device device;
 
-    @Column(
-            name = "interface_index"
-    )
-    private Integer interfaceIndex;
-
+    // Dữ liệu metric được lưu dưới dạng JSONB.
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(
-            name = "metrics",
+            name = "metric_data",
             columnDefinition = "jsonb",
             nullable = false
     )
-    private Map<String, Object> metrics;
+    private Map<String, Object> metricData;
 
+    // Thời điểm ghi nhận metric.
     @Builder.Default
     @Column(
             name = "timestamp",
-            nullable = false
+            nullable = false,
+            updatable = false
     )
-    private LocalDateTime timestamp = LocalDateTime.now();
+    private OffsetDateTime timestamp = OffsetDateTime.now();
 }

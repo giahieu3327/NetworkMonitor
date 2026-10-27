@@ -2,7 +2,6 @@ package com.network_monitor.portal_service.config;
 
 import com.network_monitor.portal_service.model.dto.request.SendVerificationEmailRequest;
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
-import com.network_monitor.portal_service.model.dto.response.UserResponse;
 import com.network_monitor.portal_service.model.entity.User;
 import com.network_monitor.portal_service.repository.UserRepository;
 import com.network_monitor.portal_service.service.KeyCloakService;
@@ -15,7 +14,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 
 @Configuration
@@ -216,17 +215,17 @@ public class InitAdmin implements CommandLineRunner {
         UserRepresentation keycloakUser =
                 keycloakUserResponse.getData();
 
-        LocalDateTime createdAt;
+        OffsetDateTime createdAt;
 
         if (keycloakUser.getCreatedTimestamp() != null) {
-        createdAt = LocalDateTime.ofInstant(
+        createdAt = OffsetDateTime.ofInstant(
                 Instant.ofEpochMilli(keycloakUser.getCreatedTimestamp()),
                 ZoneOffset.UTC
         );
         }
         else {
             createdAt =
-                    LocalDateTime.now(ZoneOffset.UTC);
+                    OffsetDateTime.now(ZoneOffset.UTC);
         }
 
         boolean emailVerified =
@@ -249,6 +248,7 @@ public class InitAdmin implements CommandLineRunner {
                         )
                         .emailVerified(emailVerified)
                         .createdAt(createdAt)
+                        .updatedAt(createdAt)
                         .build();
 
         userRepository.save(adminUser);

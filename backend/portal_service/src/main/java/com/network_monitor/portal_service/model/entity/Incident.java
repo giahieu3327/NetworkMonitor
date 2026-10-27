@@ -2,9 +2,8 @@ package com.network_monitor.portal_service.model.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "incidents")
@@ -15,86 +14,84 @@ import java.time.LocalDateTime;
 @Builder
 public class Incident {
 
+    // ID incident, tự động tăng bằng BIGSERIAL.
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
+    // Thiết bị liên quan; có thể NULL.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "device_id")
     private Device device;
 
+    // Quy tắc ngưỡng gây ra incident; có thể NULL.
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "rule_id")
+    @JoinColumn(name = "threshold_rule_id")
     private ThresholdRule thresholdRule;
 
+    // Quy tắc syslog gây ra incident; có thể NULL.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "syslog_rule_id")
     private SyslogRule syslogRule;
 
+    // Bản ghi syslog liên quan; có thể NULL.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "syslog_id")
     private Syslog syslog;
 
+    // Mức độ nghiêm trọng: INFO, WARNING hoặc CRITICAL.
     @Column(
             name = "severity",
-            length = 100,
+            length = 20,
             nullable = false
     )
     private String severity;
 
+    // Tiêu đề incident.
     @Column(
             name = "title",
-            length = 500,
+            length = 200,
             nullable = false
     )
     private String title;
 
+    // Nội dung mô tả incident.
     @Column(
-            name = "message",
-            nullable = false,
-            columnDefinition = "TEXT"
+            name = "description",
+            columnDefinition = "text",
+            nullable = false
     )
-    private String message;
+    private String description;
 
+    // ID tiến trình Camunda liên quan; có thể NULL.
     @Column(
             name = "camunda_process_id",
-            length = 255
+            length = 100
     )
     private String camundaProcessId;
 
+    // Trạng thái: OPEN, ACKNOWLEDGED hoặc RESOLVED.
     @Builder.Default
     @Column(
             name = "status",
-            length = 100,
+            length = 30,
             nullable = false
     )
     private String status = "OPEN";
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "acknowledged_by")
-    private User acknowledgedBy;
-
-    @Column(name = "acknowledged_at")
+    // Thời điểm tạo incident.
+    // PostgreSQL DEFAULT CURRENT_TIMESTAMP tự thiết lập.
     @Builder.Default
-    private LocalDateTime acknowledgedAt = LocalDateTime.now();
-
-    @Column(name = "resolved_at")
-    @Builder.Default
-    private LocalDateTime resolvedAt = LocalDateTime.now();
-
-    @CreationTimestamp
     @Column(
             name = "created_at",
             nullable = false,
             updatable = false
     )
-    @Builder.Default
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private OffsetDateTime createdAt = OffsetDateTime.now();
 
-    @Column(
-            name = "updated_at",
-            nullable = false
-    )
+    // Thời điểm xử lý xong; NULL nếu chưa giải quyết.
     @Builder.Default
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    @Column(name = "resolved_at")
+    private OffsetDateTime resolvedAt = OffsetDateTime.now();
 }

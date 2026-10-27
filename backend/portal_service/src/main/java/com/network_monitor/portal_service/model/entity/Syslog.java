@@ -3,7 +3,9 @@ package com.network_monitor.portal_service.model.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+
+import org.hibernate.annotations.ColumnTransformer;
 
 @Entity
 @Table(name = "syslogs")
@@ -14,59 +16,59 @@ import java.time.LocalDateTime;
 @Builder
 public class Syslog {
 
+    // ID bản ghi syslog, tự động tăng bằng BIGSERIAL.
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
+    // Thiết bị phát sinh syslog; có thể NULL.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "device_id")
     private Device device;
 
-    @Column(
-            name = "ip_address",
-            length = 45,
-            nullable = false
-    )
-    private String ipAddress;
+    // Địa chỉ IP, tương ứng PostgreSQL INET.
+@ColumnTransformer(
+        read = "ip_address::text",
+        write = "?::inet"
+)
+@Column(
+        name = "ip_address",
+        columnDefinition = "inet",
+        nullable = false
+)
+private String ipAddress;
 
-    @Column(
-            name = "facility",
-            length = 100,
-            nullable = false
-    )
-    private String facility;
-
+    // Mức độ nghiêm trọng của syslog.
+    // Ví dụ: INFO, WARNING, CRITICAL, UNKNOWN.
     @Column(
             name = "severity",
-            length = 100,
+            length = 20,
             nullable = false
     )
     private String severity;
 
-    @Column(
-            name = "app_name",
-            length = 255
-    )
-    private String appName;
-
+    // Nội dung thông điệp syslog.
     @Column(
             name = "message",
-            nullable = false,
-            columnDefinition = "TEXT"
+            columnDefinition = "text",
+            nullable = false
     )
     private String message;
 
+    // Dòng syslog nguyên bản; có thể NULL.
     @Column(
             name = "raw_log",
-            nullable = false,
-            columnDefinition = "TEXT"
+            columnDefinition = "text"
     )
     private String rawLog;
 
+    // Thời điểm hệ thống nhận syslog.
     @Builder.Default
     @Column(
-            name = "timestamp",
-            nullable = false
+            name = "received_at",
+            nullable = false,
+            updatable = false
     )
-    private LocalDateTime timestamp = LocalDateTime.now();
+    private OffsetDateTime receivedAt = OffsetDateTime.now();
 }

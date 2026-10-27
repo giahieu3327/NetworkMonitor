@@ -9,6 +9,12 @@ public interface AuthService {
             RegisterRequest request
     );
 
+        ApiResponse<java.util.Map<String, Object>> importUsersFromExcel(
+                org.springframework.web.multipart.MultipartFile file
+        );
+
+        byte[] exportUsersToExcel() throws java.io.IOException;
+
     ApiResponse<TokenResponse> login(
             LoginRequest request
     );
