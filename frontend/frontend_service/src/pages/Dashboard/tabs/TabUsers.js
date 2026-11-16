@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { axiosClient } from '../../../api/axiosClient';
@@ -21,20 +22,19 @@ const TabUsers = ({ currentUser }) => {
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // Fetch danh sách người dùng qua GET /api/v1/users
+  const [showImport, setShowImport] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+
+  // Fetch danh sách người dùng
   const fetchUsers = useCallback(async () => {
     try {
       const res = await axiosClient.get('/users', {
-        params: {
-          keyword: searchParams.keyword,
-          page: searchParams.page,
-          size: searchParams.size,
-          sortBy: searchParams.sortBy,
-          direction: searchParams.direction
-        }
+        params: searchParams
       });
 
       const data = res.data?.data ?? res.data;
+
       setUsers(data?.content ?? []);
       setTotalElements(data?.totalElements ?? 0);
       setTotalPages(data?.totalPages ?? 1);
@@ -50,19 +50,15 @@ const TabUsers = ({ currentUser }) => {
     }
   }, [currentUser, fetchUsers]);
 
-  // Kiểm tra xem tài khoản hiện tại có quyền thao tác trên targetUser hay không
+  // Kiểm tra quyền thao tác user
   const canManageUser = (targetUser) => {
     if (!currentUser || !targetUser) return false;
-
-    // 1. Không thể thao tác với admin
     if (targetUser.username === 'admin') return false;
-
-    // 2. Không thể tự thao tác với chính mình
     if (targetUser.id === currentUser.id) return false;
 
-    // 3. Nếu targetUser là ROLE_SUPER_ADMIN -> Chỉ tài khoản admin gốc mới được thao tác
     const isTargetSuperAdmin =
-      targetUser.roleName === 'ROLE_SUPER_ADMIN' || targetUser.roleName === 'SUPER_ADMIN';
+      targetUser.roleName === 'ROLE_SUPER_ADMIN' ||
+      targetUser.roleName === 'SUPER_ADMIN';
 
     if (isTargetSuperAdmin && currentUser.username !== 'admin') {
       return false;
@@ -71,6 +67,7 @@ const TabUsers = ({ currentUser }) => {
     return true;
   };
 
+  // Tìm kiếm
   const handleSearch = () => {
     setSearchParams((prev) => ({
       ...prev,
@@ -80,109 +77,212 @@ const TabUsers = ({ currentUser }) => {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      handleSearch();
-    }
+    if (e.key === 'Enter') handleSearch();
   };
 
+  // Sắp xếp
   const handleSort = (field) => {
-    setSearchParams((prev) => {
-      const isSameField = prev.sortBy === field;
-      const newDirection = isSameField && prev.direction === 'ASC' ? 'DESC' : 'ASC';
-      return {
-        ...prev,
-        sortBy: field,
-        direction: newDirection,
-        page: 0
-      };
-    });
+    setSearchParams((prev) => ({
+      ...prev,
+      sortBy: field,
+      direction:
+        prev.sortBy === field && prev.direction === 'ASC'
+          ? 'DESC'
+          : 'ASC',
+      page: 0
+    }));
   };
 
   const renderSortIcon = (field) => {
-    if (searchParams.sortBy !== field) return <span style={{ opacity: 0.3, marginLeft: '4px' }}>↕</span>;
-    return searchParams.direction === 'ASC' ? (
-      <span style={{ marginLeft: '4px' }}>↑</span>
-    ) : (
-      <span style={{ marginLeft: '4px' }}>↓</span>
-    );
+    if (searchParams.sortBy !== field) {
+      return <span style={{ opacity: 0.3, marginLeft: '4px' }}>↕</span>;
+    }
+
+    return searchParams.direction === 'ASC'
+      ? <span style={{ marginLeft: '4px' }}>↑</span>
+      : <span style={{ marginLeft: '4px' }}>↓</span>;
   };
 
-  // Danh sách user đủ điều kiện để chọn checkbox
-  const getSelectableUsers = () => users.filter((u) => canManageUser(u));
+  // Chọn user
+  const getSelectableUsers = () =>
+    users.filter((u) => canManageUser(u));
 
   const handleSelectAll = (e) => {
-    if (e.target.checked) {
-      const allSelectableIds = getSelectableUsers().map((u) => u.id);
-      setSelectedIds(allSelectableIds);
-    } else {
-      setSelectedIds([]);
-    }
+    setSelectedIds(
+      e.target.checked
+        ? getSelectableUsers().map((u) => u.id)
+        : []
+    );
   };
 
   const handleSelectOne = (e, user) => {
     e.stopPropagation();
+
     if (!canManageUser(user)) return;
 
     setSelectedIds((prev) =>
-      prev.includes(user.id) ? prev.filter((id) => id !== user.id) : [...prev, user.id]
+      prev.includes(user.id)
+        ? prev.filter((id) => id !== user.id)
+        : [...prev, user.id]
     );
   };
 
-  // Gọi endpoint DELETE /api/v1/users xóa hàng loạt
+  // Lấy danh sách user hợp lệ được chọn
+  const getTargetIds = () =>
+    selectedIds.filter((id) => {
+      const user = users.find((u) => u.id === id);
+      return user && canManageUser(user);
+    });
+
+  // Xóa nhiều user
   const handleBulkDelete = async () => {
     setIsDropdownOpen(false);
-    const targetIds = selectedIds.filter((id) => {
-      const u = users.find((item) => item.id === id);
-      return u && canManageUser(u);
-    });
+
+    const targetIds = getTargetIds();
 
     if (targetIds.length === 0) {
       alert('Không có người dùng hợp lệ nào được chọn để xóa!');
       return;
     }
 
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${targetIds.length} người dùng đã chọn?`)) {
-      return;
-    }
+    if (!window.confirm(
+      `Bạn có chắc chắn muốn xóa ${targetIds.length} người dùng đã chọn?`
+    )) return;
 
     try {
       await axiosClient.delete('/users', {
         data: targetIds
       });
-      fetchUsers();
+
+      await fetchUsers();
     } catch (err) {
       alert(err.response?.data?.message || 'Có lỗi xảy ra khi xóa người dùng!');
     }
   };
 
-  // Cập nhật trạng thái Active / Deactive hàng loạt qua PUT /api/v1/users/{id}
+  // Active / Deactive nhiều user
   const handleBulkStatusChange = async (isActive) => {
     setIsDropdownOpen(false);
-    const targetIds = selectedIds.filter((id) => {
-      const u = users.find((item) => item.id === id);
-      return u && canManageUser(u);
-    });
+
+    const targetIds = getTargetIds();
 
     if (targetIds.length === 0) {
-      alert(`Không có người dùng hợp lệ nào được chọn để ${isActive ? 'kích hoạt' : 'vô hiệu hóa'}!`);
+      alert('Không có người dùng hợp lệ nào được chọn!');
       return;
     }
 
     const actionText = isActive ? 'kích hoạt' : 'vô hiệu hóa';
-    if (!window.confirm(`Bạn có chắc chắn muốn ${actionText} ${targetIds.length} người dùng đã chọn?`)) {
-      return;
-    }
+
+    if (!window.confirm(
+      `Bạn có chắc chắn muốn ${actionText} ${targetIds.length} người dùng đã chọn?`
+    )) return;
 
     try {
       await Promise.all(
-        targetIds.map((id) => axiosClient.put(`/users/${id}`, { isActive }))
+        targetIds.map((id) =>
+          axiosClient.put(`/users/${id}`, { isActive })
+        )
       );
-      fetchUsers();
+
+      await fetchUsers();
     } catch (err) {
-      alert(err.response?.data?.message || `Có lỗi xảy ra khi ${actionText} người dùng!`);
+      alert(
+        err.response?.data?.message ||
+        `Có lỗi xảy ra khi ${actionText} người dùng!`
+      );
     }
   };
 
+  // Tải file Excel
+  const downloadExcel = (data, fileName) => {
+    const url = window.URL.createObjectURL(
+      new Blob([data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+    );
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+  };
+
+  // Export user
+  const handleExport = async () => {
+    setIsDropdownOpen(false);
+
+    try {
+      const res = await axiosClient.get('/auth/export', {
+        responseType: 'blob'
+      });
+
+      downloadExcel(res.data, 'users.xlsx');
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi xuất file người dùng!');
+    }
+  };
+
+  // Tải file template
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await axiosClient.get('/auth/import/template', {
+        responseType: 'blob'
+      });
+
+      downloadExcel(res.data, 'users-import-template.xlsx');
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi tải file mẫu!');
+    }
+  };
+
+  // Import user
+  const handleImport = async (e) => {
+    e.preventDefault();
+
+    if (!importFile) {
+      alert('Vui lòng chọn file Excel!');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', importFile);
+    
+
+    try {
+      setImporting(true);
+
+      const res = await axiosClient.post('/auth/import', formData);
+      const result = res.data?.data ?? {};
+
+      const message = [
+        res.data?.message || 'Import hoàn tất!',
+        result.totalRows !== undefined && `Tổng số dòng: ${result.totalRows}`,
+        result.successCount !== undefined && `Thành công: ${result.successCount}`,
+        result.failedCount !== undefined && `Thất bại: ${result.failedCount}`,
+        result.skippedCount !== undefined && `Bỏ qua: ${result.skippedCount}`
+      ].filter(Boolean).join('\n');
+
+      alert(message);
+
+      setShowImport(false);
+      setImportFile(null);
+      await fetchUsers();
+    } catch (err) {
+      console.error('Lỗi import:', err);
+      alert(err.response?.data?.message || 'Import người dùng thất bại!');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // Xem chi tiết user
   const handleRowClick = (userId) => {
     navigate(`/users/${userId}`);
   };
@@ -194,17 +294,22 @@ const TabUsers = ({ currentUser }) => {
   if (!isSuperAdmin) {
     return (
       <div className="permission-message">
-        Bạn đang đăng nhập với quyền User thông thường, không có quyền xem quản lý tài khoản.
+        Bạn đang đăng nhập với quyền User thông thường,
+        không có quyền xem quản lý tài khoản.
       </div>
     );
   }
 
   const selectableUsers = getSelectableUsers();
+
   const isAllSelected =
-    selectableUsers.length > 0 && selectableUsers.every((u) => selectedIds.includes(u.id));
+    selectableUsers.length > 0 &&
+    selectableUsers.every((u) => selectedIds.includes(u.id));
 
   return (
     <section className="dashboard-section">
+
+      {/* TOOLBAR */}
       <div className="user-toolbar">
         <div className="search-container">
           <input
@@ -222,10 +327,16 @@ const TabUsers = ({ currentUser }) => {
         </div>
 
         <div className="device-actions">
-          <button className="add-device-button" onClick={() => navigate('/register')}>
+
+          {/* Nút thêm người dùng riêng */}
+          <button
+            className="add-device-button"
+            onClick={() => navigate('/register')}
+          >
             + Thêm Người Dùng
           </button>
 
+          {/* Dropdown thao tác hàng loạt */}
           <button
             className="device-action-dropdown-button"
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -236,42 +347,85 @@ const TabUsers = ({ currentUser }) => {
 
           {isDropdownOpen && (
             <div className="device-dropdown">
-              <button className="device-dropdown-item" onClick={() => handleBulkStatusChange(true)}>
-                🔓 Active người dùng {selectedIds.length > 0 && `(${selectedIds.length})`}
+
+              <button
+                className="device-dropdown-item"
+                onClick={() => handleBulkStatusChange(true)}
+              >
+                🔓 Active người dùng
+                {selectedIds.length > 0 && ` (${selectedIds.length})`}
               </button>
 
-              <button className="device-dropdown-item" onClick={() => handleBulkStatusChange(false)}>
-                🔒 Deactive người dùng {selectedIds.length > 0 && `(${selectedIds.length})`}
+              <button
+                className="device-dropdown-item"
+                onClick={() => handleBulkStatusChange(false)}
+              >
+                🔒 Deactive người dùng
+                {selectedIds.length > 0 && ` (${selectedIds.length})`}
               </button>
 
-              <button className="device-dropdown-item delete-item" onClick={handleBulkDelete}>
-                🗑️ Xóa người dùng {selectedIds.length > 0 && `(${selectedIds.length})`}
+              <button
+                className="device-dropdown-item delete-item"
+                onClick={handleBulkDelete}
+              >
+                🗑️ Xóa người dùng
+                {selectedIds.length > 0 && ` (${selectedIds.length})`}
               </button>
+
+              <button
+                className="device-dropdown-item"
+                onClick={() => {
+                  setIsDropdownOpen(false);
+                  setImportFile(null);
+                  setShowImport(true);
+                }}
+              >
+                📥 Thêm user từ file
+              </button>
+
+              <button
+                className="device-dropdown-item"
+                onClick={handleExport}
+              >
+                📤 Xuất file user
+              </button>
+
             </div>
           )}
         </div>
       </div>
 
+      {/* USER TABLE */}
       <div className="user-table-wrapper">
         <table className="user-table">
           <thead>
             <tr>
               <th style={{ width: '40px', textAlign: 'center' }}>
-                <input type="checkbox" checked={isAllSelected} onChange={handleSelectAll} />
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={handleSelectAll}
+                />
               </th>
+
               <th onClick={() => handleSort('username')} style={{ cursor: 'pointer' }}>
                 Username {renderSortIcon('username')}
               </th>
+
               <th onClick={() => handleSort('fullName')} style={{ cursor: 'pointer' }}>
                 Họ và Tên {renderSortIcon('fullName')}
               </th>
+
               <th onClick={() => handleSort('email')} style={{ cursor: 'pointer' }}>
                 Email {renderSortIcon('email')}
               </th>
+
               <th>Số Điện Thoại</th>
+
               <th onClick={() => handleSort('roleName')} style={{ cursor: 'pointer' }}>
                 Vai trò {renderSortIcon('roleName')}
               </th>
+
               <th onClick={() => handleSort('isActive')} style={{ cursor: 'pointer' }}>
                 Trạng thái {renderSortIcon('isActive')}
               </th>
@@ -290,7 +444,10 @@ const TabUsers = ({ currentUser }) => {
                     className="clickable-row"
                     onClick={() => handleRowClick(u.id)}
                   >
-                    <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                    <td
+                      style={{ textAlign: 'center' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <input
                         type="checkbox"
                         disabled={!isManageable}
@@ -298,21 +455,29 @@ const TabUsers = ({ currentUser }) => {
                         onChange={(e) => handleSelectOne(e, u)}
                       />
                     </td>
+
                     <td>{u.username}</td>
                     <td>{u.fullName}</td>
+
                     <td>
                       {u.email}
                       {!u.emailVerified && (
                         <span
-                          style={{ color: '#ef4444', fontWeight: 'bold', marginLeft: '4px' }}
+                          style={{
+                            color: '#ef4444',
+                            fontWeight: 'bold',
+                            marginLeft: '4px'
+                          }}
                           title="Chưa xác thực email"
                         >
                           (*)
                         </span>
                       )}
                     </td>
+
                     <td>{u.phoneNumber || 'N/A'}</td>
                     <td>{u.roleName}</td>
+
                     <td>
                       <span className={u.isActive ? 'status-active' : 'status-inactive'}>
                         {u.isActive ? 'HOẠT ĐỘNG' : 'ĐÃ KHÓA'}
@@ -332,6 +497,7 @@ const TabUsers = ({ currentUser }) => {
         </table>
       </div>
 
+      {/* PAGINATION */}
       {totalPages > 1 && (
         <div
           style={{
@@ -349,7 +515,12 @@ const TabUsers = ({ currentUser }) => {
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button
               disabled={searchParams.page === 0}
-              onClick={() => setSearchParams((prev) => ({ ...prev, page: prev.page - 1 }))}
+              onClick={() =>
+                setSearchParams((prev) => ({
+                  ...prev,
+                  page: prev.page - 1
+                }))
+              }
               style={{
                 padding: '6px 12px',
                 borderRadius: '6px',
@@ -367,7 +538,12 @@ const TabUsers = ({ currentUser }) => {
 
             <button
               disabled={searchParams.page + 1 >= totalPages}
-              onClick={() => setSearchParams((prev) => ({ ...prev, page: prev.page + 1 }))}
+              onClick={() =>
+                setSearchParams((prev) => ({
+                  ...prev,
+                  page: prev.page + 1
+                }))
+              }
               style={{
                 padding: '6px 12px',
                 borderRadius: '6px',
@@ -381,6 +557,53 @@ const TabUsers = ({ currentUser }) => {
           </div>
         </div>
       )}
+
+      {/* IMPORT MODAL */}
+      {showImport && (
+        <div className="import-modal-overlay">
+          <div className="import-modal">
+            <h3>Import danh sách người dùng</h3>
+
+            <form onSubmit={handleImport}>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                disabled={importing}
+              />
+
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                disabled={importing}
+              >
+                📥 Tải file import-template
+              </button>
+
+              <div className="import-modal-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowImport(false);
+                    setImportFile(null);
+                  }}
+                  disabled={importing}
+                >
+                  Đóng
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={importing || !importFile}
+                >
+                  {importing ? 'Đang gửi...' : 'Xác nhận / Gửi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </section>
   );
 };

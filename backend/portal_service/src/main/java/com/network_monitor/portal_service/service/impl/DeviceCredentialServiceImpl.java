@@ -11,6 +11,7 @@ import com.network_monitor.portal_service.model.entity.DeviceCredential;
 import com.network_monitor.portal_service.repository.DeviceCredentialRepository;
 import com.network_monitor.portal_service.repository.DeviceRepository;
 import com.network_monitor.portal_service.service.DeviceCredentialService;
+import com.network_monitor.portal_service.service.SnmpService;
 import com.network_monitor.portal_service.util.SearchRequestUtils;
 
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,7 @@ public class DeviceCredentialServiceImpl
     private final DeviceCredentialRepository credentialRepository;
     private final DeviceRepository deviceRepository;
     private final DeviceCredentialMapper credentialMapper;
+    private final SnmpService snmpService;
 
     // ==================== CREATE ====================
 
@@ -77,6 +79,8 @@ public class DeviceCredentialServiceImpl
             DeviceCredential saved =
                     credentialRepository.saveAndFlush(credential);
 
+            snmpService.reloadConfigs();
+
             return ApiResponse.success(
                     "Thêm credential thành công",
                     toResponse(saved)
@@ -89,12 +93,17 @@ public class DeviceCredentialServiceImpl
 
     // ==================== IMPORT EXCEL ====================
 
-    @Override
-    public ApiResponse<Map<String, Object>> createCredentialsFromExcel(
-            MultipartFile file) {
+        @Override
+        public ApiResponse<Map<String, Object>> createCredentialsFromExcel(
+                Long id,
+                MultipartFile file) {
+
+        if (id == null || !deviceRepository.existsById(id)) {
+                return ApiResponse.error("Không tìm thấy thiết bị");
+        }
 
         if (file == null || file.isEmpty()) {
-            return ApiResponse.error("File Excel không được để trống");
+                return ApiResponse.error("File Excel không được để trống");
         }
 
         int totalRows = 0;
@@ -105,38 +114,41 @@ public class DeviceCredentialServiceImpl
         List<Map<String, Object>> errors = new ArrayList<>();
 
         try (InputStream input = file.getInputStream();
-             Workbook workbook = WorkbookFactory.create(input)) {
+                Workbook workbook = WorkbookFactory.create(input)) {
 
-            if (workbook.getNumberOfSheets() == 0) {
+                if (workbook.getNumberOfSheets() == 0) {
                 return ApiResponse.error(
                         "File Excel không có sheet dữ liệu"
                 );
-            }
+                }
 
-            Sheet sheet = workbook.getSheetAt(0);
-            DataFormatter formatter = new DataFormatter();
+                Sheet sheet = workbook.getSheetAt(0);
+                DataFormatter formatter = new DataFormatter();
 
-            // Bỏ qua dòng tiêu đề tại index 0.
-            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                // Bỏ qua dòng tiêu đề tại index 0.
+                for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
 
-                if (isEmptyRow(row, formatter, 7)) {
-                    skippedCount++;
-                    continue;
+                if (isEmptyRow(row, formatter, 6)) {
+                        skippedCount++;
+                        continue;
                 }
 
                 totalRows++;
 
                 try {
-                    DeviceCredentialRequest request =
-                            readRequestFromExcel(row, formatter);
+                        DeviceCredentialRequest request =
+                                readRequestFromExcel(row, formatter);
 
-                    ApiResponse<DeviceCredentialResponse> response =
-                            addCredential(request);
+                        // Gán Device ID từ URL.
+                        request.setDeviceId(id);
 
-                    if (response != null && response.isSuccess()) {
+                        ApiResponse<DeviceCredentialResponse> response =
+                                addCredential(request);
+
+                        if (response != null && response.isSuccess()) {
                         successCount++;
-                    } else {
+                        } else {
                         failedCount++;
 
                         Map<String, Object> error = new LinkedHashMap<>();
@@ -147,20 +159,29 @@ public class DeviceCredentialServiceImpl
                                         ? "Không thể thêm credential"
                                         : response.getMessage()
                         );
-                        errors.add(error);
-                    }
-                } catch (Exception e) {
-                    failedCount++;
 
-                    Map<String, Object> error = new LinkedHashMap<>();
-                    error.put("row", i + 1);
-                    error.put("message", getErrorMessage(e));
-                    errors.add(error);
+                        errors.add(error);
+                        }
+
+                } catch (Exception e) {
+                        failedCount++;
+
+                        Map<String, Object> error = new LinkedHashMap<>();
+                        error.put("row", i + 1);
+                        error.put("message", getErrorMessage(e));
+
+                        errors.add(error);
                 }
-            }
+                }
+
         } catch (Exception e) {
-            log.error("Import credentials from Excel failed", e);
-            return ApiResponse.error(getErrorMessage(e));
+                log.error(
+                        "Import credentials from Excel failed: deviceId={}",
+                        id,
+                        e
+                );
+
+                return ApiResponse.error(getErrorMessage(e));
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -171,7 +192,7 @@ public class DeviceCredentialServiceImpl
         result.put("errors", errors);
 
         return ApiResponse.success("Import Excel hoàn tất", result);
-    }
+        }
 
     // ==================== UPDATE ====================
 
@@ -207,7 +228,9 @@ public class DeviceCredentialServiceImpl
                     .build();
 
             credentialRepository.saveAndFlush(updated);
-
+            
+            snmpService.reloadConfigs();
+        
             return ApiResponse.success(
                     "Cập nhật credential thành công",
                     null
@@ -232,6 +255,8 @@ public class DeviceCredentialServiceImpl
 
             credentialRepository.delete(credential);
 
+            snmpService.reloadConfigs();
+
             return ApiResponse.success(
                     "Xóa credential thành công",
                     null
@@ -255,6 +280,8 @@ public class DeviceCredentialServiceImpl
             if (!credentials.isEmpty()) {
                 credentialRepository.deleteAll(credentials);
             }
+
+            snmpService.reloadConfigs();
 
             return ApiResponse.success(
                     credentials.isEmpty()
@@ -337,49 +364,51 @@ public class DeviceCredentialServiceImpl
 
     // ==================== EXPORT EXCEL ====================
 
-    @Override
-    public byte[] exportCredentials() throws IOException {
+        @Override
+        public byte[] exportCredentials(Long deviceId) throws IOException {
 
+        if (deviceId == null || !deviceRepository.existsById(deviceId)) {
+                throw new IllegalArgumentException("Không tìm thấy thiết bị");
+        }
+
+        // Chỉ lấy credential thuộc thiết bị được chỉ định.
         List<DeviceCredential> credentials =
-                credentialRepository.findAll();
+                credentialRepository.findByDevice_Id(deviceId);
 
         try (Workbook workbook = new XSSFWorkbook();
-             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                ByteArrayOutputStream output = new ByteArrayOutputStream()) {
 
-            Sheet sheet = workbook.createSheet("Credentials");
+                Sheet sheet = workbook.createSheet("Credentials");
 
-            String[] headers = {
-                    "ID",
-                    "Device ID",
-                    "Credential Name",
-                    "Credential Type",
-                    "Protocol Type",
-                    "Community String",
-                    "Port",
-                    "Is Active",
-                    "Created At",
-                    "Updated At"
-            };
+                String[] headers = {
+                        "ID",
+                        "Device ID",
+                        "Credential Name",
+                        "Credential Type",
+                        "Protocol Type",
+                        "Community String",
+                        "Port",
+                        "Is Active",
+                        "Created At",
+                        "Updated At"
+                };
 
-            // Tạo style cho header.
-            CellStyle headerStyle = workbook.createCellStyle();
-            Font headerFont = workbook.createFont();
-            headerFont.setBold(true);
-            headerStyle.setFont(headerFont);
+                CellStyle headerStyle = workbook.createCellStyle();
+                Font headerFont = workbook.createFont();
+                headerFont.setBold(true);
+                headerStyle.setFont(headerFont);
 
-            // Tạo dòng tiêu đề.
-            Row headerRow = sheet.createRow(0);
+                Row headerRow = sheet.createRow(0);
 
-            for (int i = 0; i < headers.length; i++) {
+                for (int i = 0; i < headers.length; i++) {
                 Cell cell = headerRow.createCell(i);
                 cell.setCellValue(headers[i]);
                 cell.setCellStyle(headerStyle);
-            }
+                }
 
-            // Ghi dữ liệu credential.
-            int rowIndex = 1;
+                int rowIndex = 1;
 
-            for (DeviceCredential credential : credentials) {
+                for (DeviceCredential credential : credentials) {
                 Row row = sheet.createRow(rowIndex++);
 
                 row.createCell(0).setCellValue(
@@ -434,22 +463,19 @@ public class DeviceCredentialServiceImpl
                                 ? credential.getUpdatedAt().toString()
                                 : ""
                 );
-            }
+                }
 
-            // Tự động điều chỉnh độ rộng cột.
-            for (int i = 0; i < headers.length; i++) {
+                for (int i = 0; i < headers.length; i++) {
                 sheet.autoSizeColumn(i);
 
                 if (sheet.getColumnWidth(i) > 50 * 256) {
-                    sheet.setColumnWidth(i, 50 * 256);
+                        sheet.setColumnWidth(i, 50 * 256);
                 }
-            }
+                }
 
-            // Cố định dòng tiêu đề.
-            sheet.createFreezePane(0, 1);
+                sheet.createFreezePane(0, 1);
 
-            // Thêm bộ lọc cho các cột.
-            if (!credentials.isEmpty()) {
+                if (!credentials.isEmpty()) {
                 sheet.setAutoFilter(
                         new org.apache.poi.ss.util.CellRangeAddress(
                                 0,
@@ -458,159 +484,144 @@ public class DeviceCredentialServiceImpl
                                 headers.length - 1
                         )
                 );
-            }
+                }
 
-            workbook.write(output);
-            return output.toByteArray();
+                workbook.write(output);
+                return output.toByteArray();
         }
-    }
+        }
 
     // ==================== DOWNLOAD IMPORT TEMPLATE ====================
 
-    @Override
-    public byte[] downloadCredentialImportTemplate() throws IOException {
+        @Override
+        public byte[] downloadCredentialImportTemplate() throws IOException {
+
         try (Workbook workbook = new XSSFWorkbook();
-             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                ByteArrayOutputStream output = new ByteArrayOutputStream()) {
 
-            Sheet sheet = workbook.createSheet("Credentials");
-            Sheet instructions = workbook.createSheet("Instructions");
+                Sheet sheet = workbook.createSheet("Credentials");
+                Sheet instructions = workbook.createSheet("Instructions");
 
-            String[] headers = {
-                    "Device ID",
-                    "Credential Name",
-                    "Credential Type",
-                    "Protocol Type",
-                    "Community String",
-                    "Port",
-                    "Is Active"
-            };
+                // Bỏ Device ID vì Device ID được lấy từ URL.
+                String[] headers = {
+                        "Credential Name",
+                        "Credential Type",
+                        "Protocol Type",
+                        "Community String",
+                        "Port",
+                        "Is Active"
+                };
 
-            CellStyle headerStyle = workbook.createCellStyle();
-            Font headerFont = workbook.createFont();
-            headerFont.setBold(true);
-            headerStyle.setFont(headerFont);
+                CellStyle headerStyle = workbook.createCellStyle();
+                Font headerFont = workbook.createFont();
+                headerFont.setBold(true);
+                headerStyle.setFont(headerFont);
 
-            // Header của sheet Credentials.
-            Row headerRow = sheet.createRow(0);
+                // Header của sheet Credentials.
+                Row headerRow = sheet.createRow(0);
 
-            for (int i = 0; i < headers.length; i++) {
+                for (int i = 0; i < headers.length; i++) {
                 Cell cell = headerRow.createCell(i);
                 cell.setCellValue(headers[i]);
                 cell.setCellStyle(headerStyle);
-            }
+                }
 
-            // Không điền Device ID giả định để tránh import nhầm thiết bị.
-
-            for (int i = 0; i < headers.length; i++) {
+                for (int i = 0; i < headers.length; i++) {
                 sheet.autoSizeColumn(i);
-            }
+                }
 
-            // Nội dung hướng dẫn.
-            String[][] instructionData = {
-                    {"Field", "Description"},
-                    {
-                            "Device ID",
-                            "ID của thiết bị đã tồn tại trong hệ thống"
-                    },
-                    {"Credential Name", "Tên credential"},
-                    {
-                            "Credential Type",
-                            "Loại credential, ví dụ SNMP"
-                    },
-                    {
-                            "Protocol Type",
-                            "Giao thức, ví dụ SNMPV2C"
-                    },
-                    {
-                            "Community String",
-                            "SNMP community string hoặc thông tin tương ứng"
-                    },
-                    {"Port", "Cổng giao tiếp, ví dụ 161"},
-                    {
-                            "Is Active",
-                            "Chỉ chấp nhận Yes/No hoặc 1/0; để trống mặc định Yes"
-                    },
-                    {
-                            "Note",
-                            "Nhập dữ liệu từ dòng 2 trong sheet Credentials"
-                    }
-            };
+                // Nội dung hướng dẫn.
+                String[][] instructionData = {
+                        {"Field", "Description"},
+                        {"Credential Name", "Tên credential"},
+                        {
+                                "Credential Type",
+                                "Loại credential, ví dụ SNMP"
+                        },
+                        {
+                                "Protocol Type",
+                                "Giao thức, ví dụ SNMPV2C"
+                        },
+                        {
+                                "Community String",
+                                "SNMP community string hoặc thông tin tương ứng"
+                        },
+                        {"Port", "Cổng giao tiếp, ví dụ 161"},
+                        {
+                                "Is Active",
+                                "Chỉ chấp nhận Yes/No hoặc 1/0; để trống mặc định Yes"
+                        },
+                        {
+                                "Note",
+                                "Nhập dữ liệu từ dòng 2 trong sheet Credentials. "
+                                        + "Device ID được xác định từ URL import."
+                        }
+                };
 
-            for (int i = 0; i < instructionData.length; i++) {
+                for (int i = 0; i < instructionData.length; i++) {
                 Row row = instructions.createRow(i);
 
                 for (int j = 0; j < instructionData[i].length; j++) {
-                    Cell cell = row.createCell(j);
-                    cell.setCellValue(instructionData[i][j]);
+                        Cell cell = row.createCell(j);
+                        cell.setCellValue(instructionData[i][j]);
 
-                    if (i == 0) {
+                        if (i == 0) {
                         cell.setCellStyle(headerStyle);
-                    }
+                        }
                 }
-            }
+                }
 
-            instructions.autoSizeColumn(0);
-            instructions.setColumnWidth(1, 70 * 256);
+                instructions.autoSizeColumn(0);
+                instructions.setColumnWidth(1, 70 * 256);
 
-            workbook.write(output);
-            return output.toByteArray();
+                workbook.write(output);
+                return output.toByteArray();
         }
-    }
+        }
 
     // ==================== EXCEL MAPPING ====================
 
-    private DeviceCredentialRequest readRequestFromExcel(
-            Row row,
-            DataFormatter formatter) {
+        private DeviceCredentialRequest readRequestFromExcel(
+                Row row,
+                DataFormatter formatter) {
 
-        String deviceIdValue = getCell(row, 0, formatter);
-        String portValue = getCell(row, 5, formatter);
-        String activeValue = getCell(row, 6, formatter);
+        String portValue = getCell(row, 4, formatter);
+        String activeValue = getCell(row, 5, formatter);
 
-        long deviceId;
         int port;
         Boolean isActive;
 
         try {
-            deviceId = Long.parseLong(deviceIdValue);
+                port = Integer.parseInt(portValue);
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(
-                    "Device ID phải là số nguyên hợp lệ"
-            );
-        }
-
-        try {
-            port = Integer.parseInt(portValue);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(
-                    "Port phải là số nguyên hợp lệ"
-            );
+                throw new IllegalArgumentException(
+                        "Port phải là số nguyên hợp lệ"
+                );
         }
 
         if (activeValue.isBlank()) {
-            isActive = Boolean.TRUE;
+                isActive = Boolean.TRUE;
         } else if (activeValue.equalsIgnoreCase("Yes")
                 || activeValue.equals("1")) {
-            isActive = Boolean.TRUE;
+                isActive = Boolean.TRUE;
         } else if (activeValue.equalsIgnoreCase("No")
                 || activeValue.equals("0")) {
-            isActive = Boolean.FALSE;
+                isActive = Boolean.FALSE;
         } else {
-            throw new IllegalArgumentException(
-                    "Cột Is Active chỉ chấp nhận Yes/No hoặc 1/0"
-            );
+                throw new IllegalArgumentException(
+                        "Cột Is Active chỉ chấp nhận Yes/No hoặc 1/0"
+                );
         }
 
         return DeviceCredentialRequest.builder()
-                .deviceId(deviceId)
-                .credentialName(getCell(row, 1, formatter))
-                .credentialType(getCell(row, 2, formatter))
-                .protocolType(getCell(row, 3, formatter))
-                .communityString(getCell(row, 4, formatter))
+                .credentialName(getCell(row, 0, formatter))
+                .credentialType(getCell(row, 1, formatter))
+                .protocolType(getCell(row, 2, formatter))
+                .communityString(getCell(row, 3, formatter))
                 .port(port)
                 .isActive(isActive)
                 .build();
-    }
+        }
 
     // ==================== RESPONSE MAPPING ====================
 

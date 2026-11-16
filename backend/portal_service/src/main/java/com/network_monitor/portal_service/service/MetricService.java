@@ -1,31 +1,25 @@
+
 package com.network_monitor.portal_service.service;
 
 import com.network_monitor.portal_service.model.dto.request.MetricRequest;
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
 import com.network_monitor.portal_service.model.dto.response.MetricResponse;
-import com.network_monitor.portal_service.model.dto.response.MetricValueResponse;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import java.util.List;
+import java.util.Map;
 
 public interface MetricService {
 
     ApiResponse<MetricResponse> insertMetric(MetricRequest request);
 
-    /**
-     * Lấy giá trị mới nhất của một metric.
-     */
-    ApiResponse<MetricValueResponse> getLatestMetricValue(
-        Long deviceId,
-        String metricName
-    );
+    ApiResponse<Integer> deleteExpiredMetrics();
 
-    /**
-     * Lấy lịch sử của một metric.
-     */
-    Page<MetricValueResponse> getMetricHistory(
-        Long deviceId,
-        String metricName,
-        Pageable pageable
-    );
+    // Latest metrics from Redis
+    ApiResponse<Map<String, Object>> getLatestMetrics(Long deviceId);
+
+    // CPU history from PostgreSQL
+    ApiResponse<List<MetricResponse>> getCpuHistory(Long deviceId);
+
+    // RAM history from PostgreSQL
+    ApiResponse<List<MetricResponse>> getRamHistory(Long deviceId);
 }

@@ -226,6 +226,12 @@ public class DeviceServiceImpl implements DeviceService {
             device.setIpAddress(request.getIpAddress());
             device.setDeviceType(request.getDeviceType());
 
+            device.setStatus(
+                    health.checkPing(request.getIpAddress())
+                            ? "UP"
+                            : "DOWN"
+            );
+
             deviceRepository.saveAndFlush(device);
 
             snmpService.reloadConfigs();

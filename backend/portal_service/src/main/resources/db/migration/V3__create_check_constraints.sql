@@ -228,15 +228,3 @@ CHECK (
     resolved_at IS NULL
     OR resolved_at >= created_at
 );
-
-
--- =============================================
--- ARP MAC TABLES
--- =============================================
-
-ALTER TABLE arp_mac_tables
-ADD CONSTRAINT chk_arp_mac_tables_interface_index
-CHECK (
-    interface_index IS NULL
-    OR interface_index > 0
-);

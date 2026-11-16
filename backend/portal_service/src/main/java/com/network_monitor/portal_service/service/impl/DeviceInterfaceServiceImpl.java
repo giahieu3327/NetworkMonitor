@@ -1,3 +1,4 @@
+
 package com.network_monitor.portal_service.service.impl;
 
 import com.network_monitor.portal_service.mapper.DeviceInterfaceMapper;
@@ -15,6 +16,7 @@ import com.network_monitor.portal_service.repository.DeviceInterfaceRepository;
 import com.network_monitor.portal_service.repository.DeviceRepository;
 
 import com.network_monitor.portal_service.service.DeviceInterfaceService;
+import com.network_monitor.portal_service.service.SnmpService;
 
 import com.network_monitor.portal_service.util.SearchRequestUtils;
 
@@ -29,7 +31,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -38,15 +43,13 @@ public class DeviceInterfaceServiceImpl
         implements DeviceInterfaceService {
 
     private final DeviceInterfaceRepository interfaceRepository;
-
     private final DeviceRepository deviceRepository;
-
     private final DeviceInterfaceMapper interfaceMapper;
+    private final SnmpService snmpService;
 
-
-    // ======================================================
+    // =====================================================
     // CREATE
-    // ======================================================
+    // =====================================================
 
     @Override
     @Transactional
@@ -55,66 +58,49 @@ public class DeviceInterfaceServiceImpl
 
         try {
 
-            validateRequest(request);
+            if (request == null ||
+                    request.getDeviceId() == null ||
+                    request.getInterfaceIndex() == null) {
 
-            // Kiểm tra thiết bị tồn tại.
-            Device device = deviceRepository.findById(
-                    request.getDeviceId()
-            ).orElseThrow(() ->
-                    new IllegalArgumentException(
-                            "Không tìm thấy thiết bị"
-                    )
-            );
+                return ApiResponse.error(
+                        "Device ID và interface index không được để trống"
+                );
+            }
 
-            // Tạo khóa chính kép.
+            if (request.getInterfaceIndex() <= 0) {
+
+                return ApiResponse.error(
+                        "Interface index phải lớn hơn 0"
+                );
+            }
+
+            Device device = validateDevice(request.getDeviceId());
+
             DeviceInterface.DeviceInterfaceId id =
                     new DeviceInterface.DeviceInterfaceId(
                             request.getDeviceId(),
                             request.getInterfaceIndex()
                     );
 
-            // Kiểm tra interface đã tồn tại chưa.
             if (interfaceRepository.existsById(id)) {
 
                 return ApiResponse.error(
-                        "Interface index đã tồn tại trên thiết bị này"
+                        "Interface đã tồn tại"
                 );
             }
 
-            // Tạo interface mới.
-            DeviceInterface deviceInterface = DeviceInterface.builder()
+            DeviceInterface deviceInterface =
+                    DeviceInterface.builder()
+                            .deviceId(request.getDeviceId())
+                            .interfaceIndex(request.getInterfaceIndex())
+                            .device(device)
+                            .build();
 
-                    .deviceId(request.getDeviceId())
+            applyRequest(deviceInterface, request);
 
-                    .interfaceIndex(request.getInterfaceIndex())
-
-                    .device(device)
-
-                    .interfaceName(request.getInterfaceName())
-
-                    .interfaceType(request.getInterfaceType())
-
-                    .mtu(request.getMtu())
-
-                    .speedBps(request.getSpeedBps())
-
-                    .physAddress(request.getPhysAddress())
-
-                    .adminStatus(request.getAdminStatus())
-
-                    .operStatus(request.getOperStatus())
-
-                    .interfaceAlias(request.getInterfaceAlias())
-
-                    .isMonitor(
-                            request.getIsMonitor() == null
-                                    ? Boolean.FALSE
-                                    : request.getIsMonitor()
-                    )
-
-                    .updatedAt(OffsetDateTime.now())
-
-                    .build();
+            deviceInterface.setUpdatedAt(
+                    OffsetDateTime.now()
+            );
 
             DeviceInterface saved =
                     interfaceRepository.saveAndFlush(deviceInterface);
@@ -128,14 +114,15 @@ public class DeviceInterfaceServiceImpl
 
             log.error("Add interface failed", e);
 
-            return ApiResponse.error(getErrorMessage(e));
+            return ApiResponse.error(
+                    getErrorMessage(e)
+            );
         }
     }
 
-
-    // ======================================================
+    // =====================================================
     // UPDATE
-    // ======================================================
+    // =====================================================
 
     @Override
     @Transactional
@@ -146,8 +133,6 @@ public class DeviceInterfaceServiceImpl
 
         try {
 
-            validateRequest(request);
-
             if (deviceId == null || interfaceIndex == null) {
 
                 return ApiResponse.error(
@@ -155,57 +140,38 @@ public class DeviceInterfaceServiceImpl
                 );
             }
 
-            // Không cho phép thay đổi khóa chính kép.
-            if (!deviceId.equals(request.getDeviceId())
-                    || !interfaceIndex.equals(request.getInterfaceIndex())) {
+            if (request == null) {
 
                 return ApiResponse.error(
-                        "Không được thay đổi Device ID hoặc Interface Index"
+                        "Thông tin cập nhật không được để trống"
                 );
             }
 
-            // Tạo khóa chính kép.
             DeviceInterface.DeviceInterfaceId id =
                     new DeviceInterface.DeviceInterfaceId(
                             deviceId,
                             interfaceIndex
                     );
 
-            // Tìm interface cần cập nhật.
-            DeviceInterface existing =
+            DeviceInterface deviceInterface =
                     interfaceRepository.findById(id)
-                            .orElseThrow(() ->
-                                    new IllegalArgumentException(
-                                            "Không tìm thấy interface"
-                                    )
-                            );
+                            .orElse(null);
 
-            // Cập nhật thông tin interface.
-            existing.setInterfaceName(request.getInterfaceName());
+            if (deviceInterface == null) {
 
-            existing.setInterfaceType(request.getInterfaceType());
-
-            existing.setMtu(request.getMtu());
-
-            existing.setSpeedBps(request.getSpeedBps());
-
-            existing.setPhysAddress(request.getPhysAddress());
-
-            existing.setAdminStatus(request.getAdminStatus());
-
-            existing.setOperStatus(request.getOperStatus());
-
-            existing.setInterfaceAlias(request.getInterfaceAlias());
-
-            // Chỉ cập nhật isMonitor khi request có truyền giá trị.
-            if (request.getIsMonitor() != null) {
-
-                existing.setIsMonitor(request.getIsMonitor());
+                return ApiResponse.error(
+                        "Không tìm thấy interface"
+                );
             }
 
-            existing.setUpdatedAt(OffsetDateTime.now());
+            // Cập nhật thông tin interface.
+            applyRequest(deviceInterface, request);
 
-            interfaceRepository.saveAndFlush(existing);
+            deviceInterface.setUpdatedAt(
+                    OffsetDateTime.now()
+            );
+
+            interfaceRepository.saveAndFlush(deviceInterface);
 
             return ApiResponse.success(
                     "Cập nhật interface thành công",
@@ -221,14 +187,15 @@ public class DeviceInterfaceServiceImpl
                     e
             );
 
-            return ApiResponse.error(getErrorMessage(e));
+            return ApiResponse.error(
+                    getErrorMessage(e)
+            );
         }
     }
 
-
-    // ======================================================
+    // =====================================================
     // DELETE
-    // ======================================================
+    // =====================================================
 
     @Override
     @Transactional
@@ -245,21 +212,22 @@ public class DeviceInterfaceServiceImpl
                 );
             }
 
-            // Tạo khóa chính kép.
             DeviceInterface.DeviceInterfaceId id =
                     new DeviceInterface.DeviceInterfaceId(
                             deviceId,
                             interfaceIndex
                     );
 
-            // Tìm interface cần xóa.
             DeviceInterface deviceInterface =
                     interfaceRepository.findById(id)
-                            .orElseThrow(() ->
-                                    new IllegalArgumentException(
-                                            "Không tìm thấy interface"
-                                    )
-                            );
+                            .orElse(null);
+
+            if (deviceInterface == null) {
+
+                return ApiResponse.error(
+                        "Không tìm thấy interface"
+                );
+            }
 
             interfaceRepository.delete(deviceInterface);
 
@@ -277,55 +245,40 @@ public class DeviceInterfaceServiceImpl
                     e
             );
 
-            return ApiResponse.error(getErrorMessage(e));
+            return ApiResponse.error(
+                    getErrorMessage(e)
+            );
         }
     }
 
-
-    // ======================================================
-    // GET ALL INTERFACES BY DEVICE ID - PAGINATION
-    // ======================================================
+    // =====================================================
+    // READ - GET ALL
+    // =====================================================
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public Page<DeviceInterfaceResponse> getInterfacesByDeviceId(
             Long deviceId,
             SearchRequest request) {
 
-        // Kiểm tra deviceId.
-        if (deviceId == null || !deviceRepository.existsById(deviceId)) {
+        validateDevice(deviceId);
 
-            throw new IllegalArgumentException(
-                    "Không tìm thấy thiết bị"
-            );
-        }
+        discoverAndSyncInterfaces(deviceId);
 
-        SearchRequest search = request != null
-                ? request
-                : new SearchRequest();
+        SearchRequest search =
+                request != null ? request : new SearchRequest();
 
-        // Chuẩn hóa pagination.
-        int page = SearchRequestUtils.normalizePage(search);
+        Pageable pageable = createPageable(search);
 
-        int size = SearchRequestUtils.normalizeSize(search);
+        String keyword =
+                SearchRequestUtils.normalizeKeyword(search);
 
-        String keyword = SearchRequestUtils.normalizeKeyword(search);
+        String sortBy =
+                SearchRequestUtils.normalizeSortBy(search, "updatedAt");
 
-        String sortBy = SearchRequestUtils.normalizeSortBy(
-                search,
-                "updatedAt"
-        );
+        String direction =
+                SearchRequestUtils.normalizeDirection(search);
 
-        String direction = SearchRequestUtils.normalizeDirection(search);
-
-        Pageable pageable = SearchRequestUtils.toPageable(
-                page,
-                size,
-                sortBy,
-                direction
-        );
-
-        // Lấy dữ liệu bằng MyBatis.
         List<DeviceInterface> interfaces =
                 interfaceMapper.searchInterfacesByDeviceId(
                         deviceId,
@@ -336,90 +289,16 @@ public class DeviceInterfaceServiceImpl
                         direction
                 );
 
-        // Đếm tổng số interface.
-        long total = interfaceMapper.countInterfacesByDeviceId(
-                deviceId,
-                keyword
-        );
-
-        // Chuyển Entity sang Response DTO.
-        List<DeviceInterfaceResponse> responses = interfaces.stream()
-                .map(this::toResponse)
-                .toList();
-
-        return new PageImpl<>(
-                responses,
-                pageable,
-                total
-        );
-    }
-
-
-    // ======================================================
-    // GET MONITORED INTERFACES BY DEVICE ID - PAGINATION
-    // ======================================================
-
-    @Override
-    @Transactional(readOnly = true)
-    public Page<DeviceInterfaceResponse> getMonitoredInterfacesByDeviceId(
-            Long deviceId,
-            SearchRequest request) {
-
-        // Kiểm tra deviceId.
-        if (deviceId == null || !deviceRepository.existsById(deviceId)) {
-
-            throw new IllegalArgumentException(
-                    "Không tìm thấy thiết bị"
-            );
-        }
-
-        SearchRequest search = request != null
-                ? request
-                : new SearchRequest();
-
-        // Chuẩn hóa pagination.
-        int page = SearchRequestUtils.normalizePage(search);
-
-        int size = SearchRequestUtils.normalizeSize(search);
-
-        String keyword = SearchRequestUtils.normalizeKeyword(search);
-
-        String sortBy = SearchRequestUtils.normalizeSortBy(
-                search,
-                "updatedAt"
-        );
-
-        String direction = SearchRequestUtils.normalizeDirection(search);
-
-        Pageable pageable = SearchRequestUtils.toPageable(
-                page,
-                size,
-                sortBy,
-                direction
-        );
-
-        // Lấy dữ liệu bằng MyBatis.
-        List<DeviceInterface> interfaces =
-                interfaceMapper.searchMonitoredInterfacesByDeviceId(
-                        deviceId,
-                        keyword,
-                        pageable.getOffset(),
-                        pageable.getPageSize(),
-                        sortBy,
-                        direction
-                );
-
-        // Đếm tổng số interface đang monitoring.
         long total =
-                interfaceMapper.countMonitoredInterfacesByDeviceId(
+                interfaceMapper.countInterfacesByDeviceId(
                         deviceId,
                         keyword
                 );
 
-        // Chuyển Entity sang Response DTO.
-        List<DeviceInterfaceResponse> responses = interfaces.stream()
-                .map(this::toResponse)
-                .toList();
+        List<DeviceInterfaceResponse> responses =
+                interfaces.stream()
+                        .map(this::toResponse)
+                        .toList();
 
         return new PageImpl<>(
                 responses,
@@ -428,13 +307,12 @@ public class DeviceInterfaceServiceImpl
         );
     }
 
-
-    // ======================================================
-    // GET INTERFACE DETAIL
-    // ======================================================
+    // =====================================================
+    // READ - GET DETAIL
+    // =====================================================
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public ApiResponse<DeviceInterfaceResponse> getInterfaceById(
             Long deviceId,
             Integer interfaceIndex) {
@@ -448,179 +326,487 @@ public class DeviceInterfaceServiceImpl
                 );
             }
 
-            // Tạo khóa chính kép.
+            validateDevice(deviceId);
+
+            discoverAndSyncInterfaces(deviceId);
+
             DeviceInterface.DeviceInterfaceId id =
                     new DeviceInterface.DeviceInterfaceId(
                             deviceId,
                             interfaceIndex
                     );
 
-            return interfaceRepository.findById(id)
+            DeviceInterface deviceInterface =
+                    interfaceRepository.findById(id)
+                            .orElse(null);
 
-                    .map(deviceInterface ->
-                            ApiResponse.success(
-                                    "Lấy thông tin interface thành công",
-                                    toResponse(deviceInterface)
-                            )
-                    )
+            if (deviceInterface == null) {
 
-                    .orElseGet(() ->
-                            ApiResponse.error(
-                                    "Không tìm thấy interface"
-                            )
-                    );
+                return ApiResponse.error(
+                        "Không tìm thấy interface"
+                );
+            }
+
+            return ApiResponse.success(
+                    "Lấy thông tin interface thành công",
+                    toResponse(deviceInterface)
+            );
 
         } catch (Exception e) {
 
-            log.error(
-                    "Get interface detail failed: deviceId={}, interfaceIndex={}",
-                    deviceId,
-                    interfaceIndex,
-                    e
-            );
+            log.error("Get interface detail failed", e);
 
-            return ApiResponse.error(getErrorMessage(e));
+            return ApiResponse.error(
+                    getErrorMessage(e)
+            );
         }
     }
 
+    // =====================================================
+    // SNMP DISCOVERY AND CRUD SYNCHRONIZATION
+    // =====================================================
 
-    // ======================================================
-    // VALIDATION
-    // ======================================================
+    /**
+     * SNMP chỉ chịu trách nhiệm lấy dữ liệu.
+     *
+     * Service này quyết định:
+     * - Interface chưa tồn tại: CREATE.
+     * - Interface đã tồn tại: UPDATE.
+     * - Interface không còn tồn tại: DELETE.
+     */
+    private void discoverAndSyncInterfaces(Long deviceId) {
 
-    private void validateRequest(DeviceInterfaceRequest request) {
+        Map<String, Object> snmpResult =
+                snmpService.pollInterfaceScope(deviceId);
 
-        if (request == null) {
+        if (snmpResult == null) {
 
-            throw new IllegalArgumentException(
-                    "Thông tin interface không được để trống"
+            throw new IllegalStateException(
+                    "Không thể lấy dữ liệu interface từ SNMP"
             );
         }
 
-        if (request.getDeviceId() == null) {
+        Object object = snmpResult.get("interfaces");
+
+        if (!(object instanceof Map<?, ?> interfaces)) {
+
+            throw new IllegalStateException(
+                    "Dữ liệu interface SNMP không hợp lệ"
+            );
+        }
+
+        Set<Integer> discoveredIndexes = new HashSet<>();
+
+        // CREATE hoặc UPDATE từng interface.
+        for (Map.Entry<?, ?> entry : interfaces.entrySet()) {
+
+            Integer interfaceIndex = toInteger(entry.getKey());
+
+            if (interfaceIndex == null || interfaceIndex <= 0) {
+                continue;
+            }
+
+            if (!(entry.getValue() instanceof Map<?, ?> data)) {
+                continue;
+            }
+
+            DeviceInterfaceRequest request =
+                    toRequest(deviceId, interfaceIndex, data);
+
+            if (request.getInterfaceName() == null ||
+                    request.getInterfaceName().isBlank()) {
+                continue;
+            }
+
+            DeviceInterface.DeviceInterfaceId id =
+                    new DeviceInterface.DeviceInterfaceId(
+                            deviceId,
+                            interfaceIndex
+                    );
+
+            if (interfaceRepository.existsById(id)) {
+
+                // UPDATE
+                updateInterface(
+                        deviceId,
+                        interfaceIndex,
+                        request
+                );
+
+            } else {
+
+                // CREATE
+                addInterface(request);
+            }
+
+            discoveredIndexes.add(interfaceIndex);
+        }
+
+        // DELETE chỉ khi discovery hoàn chỉnh.
+        boolean discoverySuccess =
+                Boolean.TRUE.equals(
+                        snmpResult.get("discoverySuccess")
+                );
+
+        if (!discoverySuccess) {
+
+            log.debug(
+                    "Skip deleting interfaces because discovery is incomplete: deviceId={}",
+                    deviceId
+            );
+
+            return;
+        }
+
+        List<DeviceInterface> existingInterfaces =
+                interfaceRepository.findAllByDeviceId(deviceId);
+
+        for (DeviceInterface existing : existingInterfaces) {
+
+            Integer index = existing.getInterfaceIndex();
+
+            if (index != null &&
+                    !discoveredIndexes.contains(index)) {
+
+                // DELETE
+                deleteInterface(deviceId, index);
+            }
+        }
+    }
+
+    // =====================================================
+    // CONVERT SNMP DATA TO REQUEST
+    // =====================================================
+
+    private DeviceInterfaceRequest toRequest(
+            Long deviceId,
+            Integer interfaceIndex,
+            Map<?, ?> data) {
+
+        DeviceInterfaceRequest request =
+                DeviceInterfaceRequest.builder()
+                        .deviceId(deviceId)
+                        .interfaceIndex(interfaceIndex)
+                        .build();
+
+        for (Map.Entry<?, ?> entry : data.entrySet()) {
+
+            String metricType =
+                    String.valueOf(entry.getKey())
+                            .toLowerCase()
+                            .replace(" ", "")
+                            .replace("_", "")
+                            .replace("-", "");
+
+            Object value = entry.getValue();
+
+            if (value == null) {
+                continue;
+            }
+
+            switch (metricType) {
+                case "interfacename":
+                    request.setInterfaceName(String.valueOf(value));
+                    break;
+
+                case "interfacetype":
+                    request.setInterfaceType(toInteger(value));
+                    break;
+
+                case "interfacemtu":
+                    request.setMtu(toInteger(value));
+                    break;
+
+                case "interfacespeed":
+                    Long speedMbps = toLong(value);
+                    request.setSpeedBps(
+                        speedMbps != null
+                                    ? speedMbps * 1_000_000L
+                                    : null);
+                    break;
+
+                case "interfaceadminstatus":
+                    request.setAdminStatus(
+                            toAdminStatus(value)
+                    );
+                    break;
+
+                case "interfaceoperstatus":
+                    request.setOperStatus(
+                            toOperStatus(value)
+                    );
+                    break;
+
+                case "interfacephysaddress":
+                    request.setPhysAddress(
+                            String.valueOf(value)
+                    );
+                    break;
+
+                case "interfacealias":
+                    request.setInterfaceAlias(
+                            String.valueOf(value)
+                    );
+                    break;
+                
+                case "interfaceipaddress":
+                    request.setIpAddress(String.valueOf(value));
+                    break;
+
+                case "interfacesubnetmask":
+                    request.setSubnetMask(String.valueOf(value));
+                    break;
+                
+                default:
+                    log.debug(
+                            "Unsupported interface metric: {}",
+                            metricType
+                    );
+            }
+        }
+
+        return request;
+    }
+
+    private String toAdminStatus(Object value) {
+
+        if (value == null) {
+                return null;
+        }
+
+        String status = String.valueOf(value).trim().toUpperCase();
+
+        return switch (status) {
+                case "1", "UP" -> "UP";
+                case "2", "DOWN" -> "DOWN";
+                case "3", "TESTING" -> "TESTING";
+                case "4", "UNKNOWN" -> "UNKNOWN";
+                default -> "UNKNOWN";
+        };
+        }
+
+        private String toOperStatus(Object value) {
+
+        if (value == null) {
+                return null;
+        }
+
+        String status = String.valueOf(value).trim().toUpperCase();
+
+        return switch (status) {
+                case "1", "UP" -> "UP";
+                case "2", "DOWN" -> "DOWN";
+                case "3", "TESTING" -> "TESTING";
+                case "4", "UNKNOWN" -> "UNKNOWN";
+                case "5", "DORMANT" -> "DORMANT";
+                case "6", "NOT_PRESENT" -> "NOT_PRESENT";
+                case "7", "LOWER_LAYER_DOWN" -> "LOWER_LAYER_DOWN";
+                default -> "UNKNOWN";
+        };
+        }
+
+    // =====================================================
+    // APPLY REQUEST TO ENTITY
+    // =====================================================
+
+    private void applyRequest(
+            DeviceInterface entity,
+            DeviceInterfaceRequest request) {
+
+        if (request.getInterfaceName() != null) {
+            entity.setInterfaceName(
+                    request.getInterfaceName()
+            );
+        }
+
+        if (request.getInterfaceType() != null) {
+            entity.setInterfaceType(
+                    request.getInterfaceType()
+            );
+        }
+
+        if (request.getMtu() != null) {
+            entity.setMtu(
+                    request.getMtu()
+            );
+        }
+
+        if (request.getSpeedBps() != null) {
+            entity.setSpeedBps(
+                    request.getSpeedBps()
+            );
+        }
+
+        if (request.getPhysAddress() != null) {
+            entity.setPhysAddress(
+                    request.getPhysAddress()
+            );
+        }
+
+        if (request.getAdminStatus() != null) {
+            entity.setAdminStatus(
+                    request.getAdminStatus()
+            );
+        }
+
+        if (request.getOperStatus() != null) {
+            entity.setOperStatus(
+                    request.getOperStatus()
+            );
+        }
+
+        if (request.getInterfaceAlias() != null) {
+            entity.setInterfaceAlias(
+                    request.getInterfaceAlias()
+            );
+        }
+
+        if(request.getIpAddress() != null) {
+            entity.setIpAddress(
+                    request.getIpAddress()
+            );
+        }
+
+        if(request.getSubnetMask() != null) {
+            entity.setSubnetMask(
+                    request.getSubnetMask()
+            );
+        }
+    }
+
+    // =====================================================
+    // VALIDATE DEVICE
+    // =====================================================
+
+    private Device validateDevice(Long deviceId) {
+
+        if (deviceId == null) {
 
             throw new IllegalArgumentException(
                     "Device ID không được để trống"
             );
         }
 
-        if (request.getInterfaceIndex() == null
-                || request.getInterfaceIndex() <= 0) {
+        return deviceRepository.findById(deviceId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "Không tìm thấy thiết bị"
+                        )
+                );
+    }
 
-            throw new IllegalArgumentException(
-                    "Interface index phải lớn hơn 0"
-            );
+    // =====================================================
+    // PAGINATION
+    // =====================================================
+
+    private Pageable createPageable(SearchRequest request) {
+
+        int page =
+                SearchRequestUtils.normalizePage(request);
+
+        int size =
+                SearchRequestUtils.normalizeSize(request);
+
+        String sortBy =
+                SearchRequestUtils.normalizeSortBy(
+                        request,
+                        "updatedAt"
+                );
+
+        String direction =
+                SearchRequestUtils.normalizeDirection(request);
+
+        return SearchRequestUtils.toPageable(
+                page,
+                size,
+                sortBy,
+                direction
+        );
+    }
+
+    // =====================================================
+    // CONVERT VALUE
+    // =====================================================
+
+    private Integer toInteger(Object value) {
+
+        if (value == null) {
+            return null;
         }
 
-        if (request.getInterfaceName() == null
-                || request.getInterfaceName().isBlank()) {
+        try {
 
-            throw new IllegalArgumentException(
-                    "Interface name không được để trống"
+            return (int) Double.parseDouble(
+                    String.valueOf(value)
             );
-        }
 
-        if (request.getInterfaceName().length() > 150) {
+        } catch (NumberFormatException e) {
 
-            throw new IllegalArgumentException(
-                    "Interface name không được vượt quá 150 ký tự"
-            );
-        }
+            log.warn("Cannot convert to Integer: {}", value);
 
-        if (request.getMtu() != null && request.getMtu() <= 0) {
-
-            throw new IllegalArgumentException(
-                    "MTU phải lớn hơn 0"
-            );
-        }
-
-        if (request.getSpeedBps() != null
-                && request.getSpeedBps() < 0) {
-
-            throw new IllegalArgumentException(
-                    "Speed BPS không được âm"
-            );
-        }
-
-        if (request.getPhysAddress() != null
-                && request.getPhysAddress().length() > 64) {
-
-            throw new IllegalArgumentException(
-                    "Physical address không được vượt quá 64 ký tự"
-            );
-        }
-
-        if (request.getAdminStatus() != null
-                && request.getAdminStatus().length() > 30) {
-
-            throw new IllegalArgumentException(
-                    "Admin status không được vượt quá 30 ký tự"
-            );
-        }
-
-        if (request.getOperStatus() != null
-                && request.getOperStatus().length() > 30) {
-
-            throw new IllegalArgumentException(
-                    "Oper status không được vượt quá 30 ký tự"
-            );
+            return null;
         }
     }
 
+    private Long toLong(Object value) {
 
-    // ======================================================
+        if (value == null) {
+            return null;
+        }
+
+        try {
+
+            return (long) Double.parseDouble(
+                    String.valueOf(value)
+            );
+
+        } catch (NumberFormatException e) {
+
+            log.warn("Cannot convert to Long: {}", value);
+
+            return null;
+        }
+    }
+
+    // =====================================================
     // RESPONSE MAPPING
-    // ======================================================
+    // =====================================================
 
     private DeviceInterfaceResponse toResponse(
-            DeviceInterface deviceInterface) {
+            DeviceInterface entity) {
 
         return DeviceInterfaceResponse.builder()
-
-                .deviceId(deviceInterface.getDeviceId())
-
+                .deviceId(entity.getDeviceId())
                 .deviceName(
-                        deviceInterface.getDevice() != null
-                                ? deviceInterface.getDevice().getDeviceName()
+                        entity.getDevice() != null
+                                ? entity.getDevice().getDeviceName()
                                 : null
                 )
-
-                .interfaceIndex(deviceInterface.getInterfaceIndex())
-
-                .interfaceName(deviceInterface.getInterfaceName())
-
-                .interfaceType(deviceInterface.getInterfaceType())
-
-                .mtu(deviceInterface.getMtu())
-
-                .speedBps(deviceInterface.getSpeedBps())
-
-                .physAddress(deviceInterface.getPhysAddress())
-
-                .adminStatus(deviceInterface.getAdminStatus())
-
-                .operStatus(deviceInterface.getOperStatus())
-
-                .interfaceAlias(deviceInterface.getInterfaceAlias())
-
-                .isMonitor(deviceInterface.getIsMonitor())
-
-                .updatedAt(deviceInterface.getUpdatedAt())
-
+                .interfaceIndex(entity.getInterfaceIndex())
+                .interfaceName(entity.getInterfaceName())
+                .interfaceType(entity.getInterfaceType())
+                .mtu(entity.getMtu())
+                .speedBps(entity.getSpeedBps())
+                .physAddress(entity.getPhysAddress())
+                .adminStatus(entity.getAdminStatus())
+                .operStatus(entity.getOperStatus())
+                .interfaceAlias(entity.getInterfaceAlias())
+                .ipAddress(entity.getIpAddress())
+                .subnetMask(entity.getSubnetMask())
+                .updatedAt(entity.getUpdatedAt())
                 .build();
     }
 
-
-    // ======================================================
-    // ERROR HANDLING
-    // ======================================================
+    // =====================================================
+    // ERROR MESSAGE
+    // =====================================================
 
     private String getErrorMessage(Throwable exception) {
 
         Throwable cause = exception;
 
-        while (cause.getCause() != null
-                && cause.getCause() != cause) {
+        while (cause.getCause() != null &&
+                cause.getCause() != cause) {
 
             cause = cause.getCause();
         }

@@ -7,6 +7,13 @@ import VerifyEmailPage from './pages/VerifyEmail/VerifyEmailPage';
 import ForgotPwdPage from './pages/ForgotPassword/ForgotPwdPage';
 import HomePage from './pages/Home/HomePage';
 import UserPage from './pages/User/UserPage';
+import CreateDevicePage from './pages/CreateDevice/CreateDevicePage';
+import DevicePage from './pages/Device/DevicePage';
+import CreateCredentialPage from './pages/CreateCredential/CreateCredentialPage';
+import CredentialPage from './pages/Credential/CredentialPage';
+import CreateOidConfigPage from './pages/CreateOidConfig/CreateOidConfigPage';
+import OidConfigPage from './pages/OidConfig/OidConfigPage';
+import InterfacePage from './pages/Interface/InterfacePage';
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('access_token');
@@ -20,12 +27,10 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Public Routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPwdPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
 
-        {/* Protected Routes */}
         <Route
           path="/dashboard"
           element={
@@ -58,8 +63,35 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/devices/create"
+          element={<CreateDevicePage />}
+        />
+        <Route
+          path="/devices/:deviceId"
+          element={<DevicePage />}
+        />
+        <Route
+          path="/devices/:deviceId/credentials/create"
+          element={<CreateCredentialPage />}
+        />
+        <Route
+          path="/credentials/:id"
+          element={<CredentialPage />}
+        />
+        <Route
+          path="/devices/:deviceId/oid-configs/create"
+          element={<CreateOidConfigPage />}
+        />
+        <Route
+          path="/oid-configs/:id"
+          element={<OidConfigPage />}
+        />
+        <Route
+          path="/devices/:deviceId/interfaces/:interfaceIndex"
+          element={<InterfacePage />}
+        />
 
-        {/* Default Redirects & Fallback */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

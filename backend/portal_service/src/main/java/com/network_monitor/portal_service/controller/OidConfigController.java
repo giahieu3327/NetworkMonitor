@@ -1,3 +1,4 @@
+
 package com.network_monitor.portal_service.controller;
 
 import com.network_monitor.portal_service.model.dto.request.OidConfigRequest;
@@ -57,10 +58,11 @@ public class OidConfigController {
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
     public ResponseEntity<ApiResponse<Map<String, Object>>> importOidConfigs(
+            @RequestParam("deviceId") Long deviceId,
             @RequestParam("file") MultipartFile file) {
 
         ApiResponse<Map<String, Object>> response =
-                oidConfigService.createOidConfigsFromExcel(file);
+                oidConfigService.createOidConfigsFromExcel(deviceId, file);
 
         if (!response.isSuccess()) {
             return ResponseEntity.badRequest().body(response);
@@ -70,12 +72,12 @@ public class OidConfigController {
     }
 
     @GetMapping("/export")
-    public ResponseEntity<byte[]> exportOidConfigs()
-            throws IOException {
+    public ResponseEntity<byte[]> exportOidConfigs(
+            @RequestParam("deviceId") Long deviceId) throws IOException {
 
         return downloadFile(
-                oidConfigService.exportOidConfigs(),
-                "oid-configs.xlsx",
+                oidConfigService.exportOidConfigs(deviceId),
+                "oid-configs-" + deviceId + ".xlsx",
                 EXCEL_CONTENT_TYPE
         );
     }

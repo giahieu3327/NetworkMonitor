@@ -1,4 +1,3 @@
-
 package com.network_monitor.portal_service.service;
 
 import com.network_monitor.portal_service.model.dto.request.OidConfigRequest;
@@ -19,6 +18,7 @@ public interface OidConfigService {
     );
 
     ApiResponse<Map<String, Object>> createOidConfigsFromExcel(
+            Long id,
             MultipartFile file
     );
 
@@ -38,7 +38,7 @@ public interface OidConfigService {
             SearchRequest request
     );
 
-    byte[] exportOidConfigs() throws IOException;
+    byte[] exportOidConfigs(Long deviceId) throws IOException;
 
     byte[] downloadOidConfigImportTemplate() throws IOException;
 }

@@ -12,9 +12,6 @@ public class ArpMacTableRequest {
     // ID thiết bị ghi nhận ARP.
     private Long deviceId;
 
-    // Interface index, có thể NULL.
-    private Integer interfaceIndex;
-
     // Địa chỉ IP.
     private String ipAddress;
 

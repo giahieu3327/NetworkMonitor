@@ -32,6 +32,7 @@ public class DeviceCredentialController {
 
     // =========================================================
     // CREATE
+    // POST /api/v1/device-credentials
     // =========================================================
 
     @PostMapping
@@ -49,7 +50,8 @@ public class DeviceCredentialController {
     }
 
     // =========================================================
-    // IMPORT / EXPORT
+    // IMPORT
+    // POST /api/v1/device-credentials/import?deviceId={deviceId}
     // =========================================================
 
     @PostMapping(
@@ -57,10 +59,14 @@ public class DeviceCredentialController {
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
     public ResponseEntity<ApiResponse<Map<String, Object>>> importCredentials(
+            @RequestParam("deviceId") Long deviceId,
             @RequestParam("file") MultipartFile file) {
 
         ApiResponse<Map<String, Object>> response =
-                deviceCredentialService.createCredentialsFromExcel(file);
+                deviceCredentialService.createCredentialsFromExcel(
+                        deviceId,
+                        file
+                );
 
         if (!response.isSuccess()) {
             return ResponseEntity.badRequest().body(response);
@@ -69,16 +75,26 @@ public class DeviceCredentialController {
         return ResponseEntity.ok(response);
     }
 
+    // =========================================================
+    // EXPORT
+    // GET /api/v1/device-credentials/export?deviceId={deviceId}
+    // =========================================================
+
     @GetMapping("/export")
-    public ResponseEntity<byte[]> exportCredentials()
-            throws IOException {
+    public ResponseEntity<byte[]> exportCredentials(
+            @RequestParam("deviceId") Long deviceId) throws IOException {
 
         return downloadFile(
-                deviceCredentialService.exportCredentials(),
-                "device-credentials.xlsx",
+                deviceCredentialService.exportCredentials(deviceId),
+                "device-credentials-" + deviceId + ".xlsx",
                 EXCEL_CONTENT_TYPE
         );
     }
+
+    // =========================================================
+    // DOWNLOAD IMPORT TEMPLATE
+    // GET /api/v1/device-credentials/import/template
+    // =========================================================
 
     @GetMapping("/import/template")
     public ResponseEntity<byte[]> downloadCredentialImportTemplate()
@@ -93,6 +109,7 @@ public class DeviceCredentialController {
 
     // =========================================================
     // UPDATE
+    // PUT /api/v1/device-credentials/{id}
     // =========================================================
 
     @PutMapping("/{id}")
@@ -111,7 +128,8 @@ public class DeviceCredentialController {
     }
 
     // =========================================================
-    // DELETE
+    // DELETE BY ID
+    // DELETE /api/v1/device-credentials/{id}
     // =========================================================
 
     @DeleteMapping("/{id}")
@@ -128,6 +146,11 @@ public class DeviceCredentialController {
         return ResponseEntity.ok(response);
     }
 
+    // =========================================================
+    // DELETE ALL CREDENTIALS BY DEVICE ID
+    // DELETE /api/v1/device-credentials/device/{deviceId}
+    // =========================================================
+
     @DeleteMapping("/device/{deviceId}")
     public ResponseEntity<ApiResponse<Void>> deleteCredentialsByDeviceId(
             @PathVariable Long deviceId) {
@@ -143,7 +166,8 @@ public class DeviceCredentialController {
     }
 
     // =========================================================
-    // QUERY
+    // QUERY BY DEVICE ID
+    // GET /api/v1/device-credentials/device/{deviceId}
     // =========================================================
 
     @GetMapping("/device/{deviceId}")
@@ -158,6 +182,11 @@ public class DeviceCredentialController {
                 )
         );
     }
+
+    // =========================================================
+    // QUERY BY ID
+    // GET /api/v1/device-credentials/{id}
+    // =========================================================
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<DeviceCredentialResponse>> getCredentialById(

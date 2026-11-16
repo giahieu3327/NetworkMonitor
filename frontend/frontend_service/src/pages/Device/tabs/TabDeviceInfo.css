@@ -1,0 +1,508 @@
+.device-info-tab {
+    width: 100%;
+    min-width: 0;
+}
+
+.device-info-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 20px;
+}
+
+.device-info-panel {
+    min-width: 0;
+    padding: 20px;
+    border: 1px solid #e5eaf1;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.device-info-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.device-info-panel-header h3 {
+    margin: 0 0 6px;
+    color: #29364e;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.device-info-panel-header p {
+    margin: 0;
+    color: #8490a3;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.device-info-source-badge,
+.device-info-snmp-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 9px;
+    border-radius: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+}
+
+.device-info-source-badge {
+    background: #edf3ff;
+    color: #3269dc;
+}
+
+.device-info-snmp-badge {
+    background: #eaf8f1;
+    color: #168653;
+}
+
+.device-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 11px;
+}
+
+.device-info-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 75px;
+    padding: 12px;
+    border: 1px solid #edf0f5;
+    border-radius: 8px;
+    background: #fafbfd;
+}
+
+.device-info-card > span {
+    color: #8490a3;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.device-info-card > strong {
+    overflow-wrap: anywhere;
+    color: #29364e;
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1.5;
+}
+
+.device-info-card-wide {
+    grid-column: 1 / -1;
+}
+
+.device-info-card-wide > strong {
+    line-height: 1.7;
+}
+
+.device-info-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.device-info-status::before {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    content: '';
+}
+
+.device-info-status.status-up {
+    color: #168653;
+}
+
+.device-info-status.status-up::before {
+    background: #20a56a;
+}
+
+.device-info-status.status-down {
+    color: #d34b4b;
+}
+
+.device-info-status.status-down::before {
+    background: #d34b4b;
+}
+
+.device-info-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 9px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #edf0f5;
+}
+
+.device-info-edit-btn,
+.device-info-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 37px;
+    padding: 8px 13px;
+    border: 1px solid;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.device-info-edit-btn {
+    border-color: #3269dc;
+    background: #3269dc;
+    color: #fff;
+}
+
+.device-info-edit-btn:hover:not(:disabled) {
+    border-color: #2457c4;
+    background: #2457c4;
+}
+
+.device-info-delete-btn {
+    border-color: #f0cccc;
+    background: #fff;
+    color: #d34b4b;
+}
+
+.device-info-delete-btn:hover:not(:disabled) {
+    background: #fff2f2;
+}
+
+.device-info-edit-btn:disabled,
+.device-info-delete-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.device-info-live-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 17px;
+    padding-top: 13px;
+    border-top: 1px solid #edf0f5;
+    color: #929bad;
+    font-size: 11px;
+}
+
+.device-info-live-footer > span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.device-info-live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #20a56a;
+    box-shadow: 0 0 0 3px rgba(32, 165, 106, 0.12);
+}
+
+.device-info-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 180px;
+    color: #8490a3;
+    font-size: 13px;
+}
+
+.device-info-spinner {
+    display: inline-block;
+    width: 19px;
+    height: 19px;
+    border: 2px solid #dce5f8;
+    border-top-color: #3269dc;
+    border-radius: 50%;
+    animation: device-info-spin 0.8s linear infinite;
+}
+
+@keyframes device-info-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.device-info-message {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 15px;
+    padding: 11px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.device-info-message button {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.device-info-message-error {
+    border: 1px solid #f2cccc;
+    background: #fff4f4;
+    color: #c53e3e;
+}
+
+.device-info-message-error button {
+    color: #c53e3e;
+}
+
+.device-info-message-success {
+    border: 1px solid #c9ead8;
+    background: #f0fbf5;
+    color: #168653;
+}
+
+.device-info-message-success button {
+    color: #168653;
+}
+
+.device-info-inline-error {
+    margin-bottom: 15px;
+    padding: 11px 12px;
+    border: 1px solid #f2cccc;
+    border-radius: 7px;
+    background: #fff4f4;
+    color: #c53e3e;
+    font-size: 12px;
+}
+
+.device-info-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(20, 30, 50, 0.48);
+    backdrop-filter: blur(3px);
+}
+
+.device-info-modal {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 440px;
+    padding: 24px;
+    border: 1px solid #e5eaf1;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 18px 55px rgba(20, 35, 65, 0.18);
+    animation: device-info-modal-show 0.18s ease-out;
+}
+
+@keyframes device-info-modal-show {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.device-info-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.device-info-modal-header h3 {
+    margin: 0 0 4px;
+    color: #29364e;
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.device-info-modal-header p {
+    margin: 0;
+    color: #8490a3;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.device-info-modal-header button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: #f3f5f8;
+    color: #6b7689;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.device-info-modal-header button:hover {
+    background: #e9edf3;
+}
+
+.device-info-modal-header button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.device-info-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+.device-info-form-group label {
+    color: #354158;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.device-info-modal .device-info-form-group input,
+.device-info-modal .device-info-form-group select {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    height: 38px;
+    min-height: 38px;
+    max-height: 38px;
+    margin: 0;
+    padding: 0 12px;
+    border: 1px solid #dfe5ee;
+    border-radius: 7px;
+    outline: none;
+    background: #fff;
+    color: #29364e;
+    font-size: 13px;
+    line-height: 36px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.device-info-modal .device-info-form-group input::placeholder {
+    color: #a2aaba;
+}
+
+.device-info-modal .device-info-form-group input:focus,
+.device-info-modal .device-info-form-group select:focus {
+    border-color: #3269dc;
+    box-shadow: 0 0 0 3px rgba(50, 105, 220, 0.1);
+}
+
+.device-info-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #edf0f5;
+}
+
+.device-info-cancel-btn,
+.device-info-save-btn {
+    height: 36px;
+    min-height: 36px;
+    padding: 0 16px;
+    border: 1px solid;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.device-info-cancel-btn {
+    border-color: #dfe5ee;
+    background: #fff;
+    color: #536078;
+}
+
+.device-info-cancel-btn:hover:not(:disabled) {
+    background: #f5f7fa;
+}
+
+.device-info-save-btn {
+    border-color: #3269dc;
+    background: #3269dc;
+    color: #fff;
+}
+
+.device-info-save-btn:hover:not(:disabled) {
+    background: #2457c4;
+}
+
+.device-info-cancel-btn:disabled,
+.device-info-save-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+@media (max-width: 1100px) {
+    .device-info-columns {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .device-info-panel {
+        padding: 15px;
+    }
+
+    .device-info-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .device-info-card-wide {
+        grid-column: auto;
+    }
+
+    .device-info-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .device-info-actions button {
+        width: 100%;
+    }
+
+    .device-info-live-footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .device-info-modal {
+        padding: 18px;
+    }
+
+    .device-info-modal-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+}

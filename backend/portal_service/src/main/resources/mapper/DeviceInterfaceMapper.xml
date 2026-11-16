@@ -31,7 +31,9 @@
 
         <result property="interfaceAlias" column="interface_alias"/>
 
-        <result property="isMonitor" column="is_monitor"/>
+        <result property="ipAddress" column="ip_address"/>
+
+        <result property="subnetMask" column="subnet_mask"/>
 
         <result property="updatedAt" column="updated_at"/>
 
@@ -63,7 +65,8 @@
         di.admin_status,
         di.oper_status,
         di.interface_alias,
-        di.is_monitor,
+        di.ip_address,
+        di.subnet_mask,
         di.updated_at
 
     </sql>
@@ -96,6 +99,12 @@
                     ILIKE CONCAT('%', #{keyword}, '%')
 
                 OR di.interface_alias
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+                OR CAST(di.ip_address AS TEXT)
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+                OR CAST(di.subnet_mask AS TEXT)
                     ILIKE CONCAT('%', #{keyword}, '%')
 
             )
@@ -145,8 +154,12 @@
                 di.oper_status
             </when>
 
-            <when test="sortBy == 'isMonitor'">
-                di.is_monitor
+            <when test="sortBy == 'ipAddress'">
+                di.ip_address
+            </when>
+
+            <when test="sortBy == 'subnetMask'">
+                di.subnet_mask
             </when>
 
             <when test="sortBy == 'updatedAt'">
@@ -224,66 +237,6 @@
         <where>
 
             di.device_id = #{deviceId}
-
-            <include refid="InterfaceKeywordCondition"/>
-
-        </where>
-
-    </select>
-
-
-    <!-- ====================================================== -->
-    <!-- 2. GET MONITORED INTERFACES BY DEVICE ID                -->
-    <!-- ====================================================== -->
-
-    <select id="searchMonitoredInterfacesByDeviceId"
-            resultMap="DeviceInterfaceResultMap">
-
-        SELECT
-
-        <include refid="InterfaceColumns"/>
-
-        FROM device_interfaces di
-
-        INNER JOIN devices d
-            ON d.id = di.device_id
-
-        <where>
-
-            di.device_id = #{deviceId}
-
-            AND di.is_monitor = TRUE
-
-            <include refid="InterfaceKeywordCondition"/>
-
-        </where>
-
-        <include refid="InterfaceOrderBy"/>
-
-        LIMIT #{pageSize}
-
-        OFFSET #{offset}
-
-    </select>
-
-
-    <!-- COUNT MONITORED INTERFACES BY DEVICE ID -->
-
-    <select id="countMonitoredInterfacesByDeviceId"
-            resultType="long">
-
-        SELECT COUNT(*)
-
-        FROM device_interfaces di
-
-        INNER JOIN devices d
-            ON d.id = di.device_id
-
-        <where>
-
-            di.device_id = #{deviceId}
-
-            AND di.is_monitor = TRUE
 
             <include refid="InterfaceKeywordCondition"/>
 

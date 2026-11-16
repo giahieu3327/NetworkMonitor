@@ -1,6 +1,10 @@
 package com.network_monitor.portal_service.model.dto.response;
 
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.OffsetDateTime;
 
@@ -25,15 +29,17 @@ public class DeviceInterfaceResponse {
 
     private Long speedBps;
 
-    private String physAddress;
-
     private String adminStatus;
 
     private String operStatus;
 
+    private String physAddress;
+
     private String interfaceAlias;
 
-    private Boolean isMonitor;
+    private String ipAddress;
+
+    private String subnetMask;
 
     private OffsetDateTime updatedAt;
 }

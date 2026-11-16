@@ -59,7 +59,6 @@ CREATE TABLE device_interfaces (
     ip_address INET,
     subnet_mask INET,
 
-    is_monitor BOOLEAN NOT NULL DEFAULT FALSE,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT pk_device_interfaces
@@ -172,7 +171,6 @@ CREATE TABLE incidents (
 CREATE TABLE arp_mac_tables (
     id BIGSERIAL PRIMARY KEY,
     device_id BIGINT NOT NULL,
-    interface_index INTEGER,
 
     ip_address INET NOT NULL,
     mac_address MACADDR NOT NULL,

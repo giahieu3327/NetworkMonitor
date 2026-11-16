@@ -1,273 +1,785 @@
+
 package com.network_monitor.portal_service.service.impl;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.network_monitor.portal_service.model.dto.request.MetricRequest;
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
 import com.network_monitor.portal_service.model.dto.response.MetricResponse;
-import com.network_monitor.portal_service.model.dto.response.MetricValueResponse;
+
 import com.network_monitor.portal_service.model.entity.Device;
 import com.network_monitor.portal_service.model.entity.Metric;
 
 import com.network_monitor.portal_service.repository.DeviceRepository;
 import com.network_monitor.portal_service.repository.MetricRepository;
-import com.network_monitor.portal_service.repository.projection.MetricValueProjection;
+
 import com.network_monitor.portal_service.service.MetricService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import java.util.List;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+import com.network_monitor.portal_service.mapper.MetricHistoryMapper;
+import com.network_monitor.portal_service.model.dto.response.MetricHistoryRow;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class MetricServiceImpl implements MetricService {
 
     private final MetricRepository metricRepository;
 
     private final DeviceRepository deviceRepository;
 
-    /**
-     * INSERT metric mới.
-     *
-     * Không UPDATE bản ghi cũ.
+    private final StringRedisTemplate redisTemplate;
+
+    private final ObjectMapper objectMapper;
+
+    private final MetricHistoryMapper metricHistoryMapper;
+    /*
+     * =========================================================
+     * REDIS CONFIGURATION
+     * =========================================================
      */
+
+    private static final String REDIS_PREFIX =
+            "network-monitor:snmp:metric:";
+
+    private static final int MAX_REDIS_SAMPLES = 15;
+
+    private static final Duration REDIS_TTL =
+            Duration.ofMinutes(20);
+
+    /*
+     * =========================================================
+     * ALLOWED METRICS
+     * =========================================================
+     *
+     * Chỉ lưu CPU / RAM / CORE.
+     *
+     * Không lưu:
+     * - Interface In Octets
+     * - Interface Out Octets
+     * - Interface Throughput
+     */
+
+    private static final Set<String> ALLOWED_METRICS = Set.of(
+
+            "cpu_usage",
+
+            "core_usage",
+
+            "core_count",
+
+            "ram_usage_percent",
+
+            "ram_usage",
+
+            "ram_free",
+
+            "ram_capacity"
+    );
+
+    /*
+     * =========================================================
+     * POSTGRESQL METRICS
+     * =========================================================
+     *
+     * PostgreSQL lưu:
+     * - CPU Usage
+     * - RAM Usage Percentage
+     *
+     * cpu_usage có thể là:
+     * - Number: Fortinet / Peplink
+     * - Map: Cisco (CPU entity index -> percentage)
+     */
+
+    private static final Set<String> POSTGRES_METRICS = Set.of(
+
+            "cpu_usage",
+
+            "ram_usage_percent"
+    );
+
+    /*
+     * =========================================================
+     * INSERT METRIC
+     * =========================================================
+     */
+
     @Override
     @Transactional
-    public ApiResponse<MetricResponse> insertMetric(MetricRequest request) {
+    public ApiResponse<MetricResponse> insertMetric(
+            MetricRequest request
+    ) {
 
         try {
 
-            // Validate request
-            if (request == null) {
-                return ApiResponse.error("Metric request cannot be null");
-            }
+            if (request == null
+                    || request.getDeviceId() == null) {
 
-            if (request.getDeviceId() == null) {
-                return ApiResponse.error("Device ID cannot be null");
-            }
-
-            if (request.getMetricData() == null ||
-                request.getMetricData().isEmpty()) {
-
-                return ApiResponse.error("Metric data cannot be empty");
-            }
-
-            // Kiểm tra thiết bị
-            Device device = deviceRepository.findById(request.getDeviceId())
-                .orElse(null);
-
-            if (device == null) {
                 return ApiResponse.error(
-                    "Device not found with ID: " + request.getDeviceId()
+                        "Invalid metric request"
                 );
             }
 
-            // Xác định thời điểm thu thập
-            OffsetDateTime timestamp = request.getTimestamp() != null
-                ? request.getTimestamp()
-                : OffsetDateTime.now();
+            if (request.getMetricData() == null
+                    || request.getMetricData().isEmpty()) {
 
-            // Tạo entity mới
-            Metric metric = Metric.builder()
-                .device(device)
-                .metricData(request.getMetricData())
-                .timestamp(timestamp)
-                .build();
+                return ApiResponse.error(
+                        "Metric data is empty"
+                );
+            }
 
-            // INSERT database
-            Metric savedMetric = metricRepository.saveAndFlush(metric);
+            Long deviceId =
+                    request.getDeviceId();
 
-            // Chuyển Entity sang Response
-            MetricResponse response = toResponse(savedMetric);
+            OffsetDateTime timestamp =
+                    request.getTimestamp() != null
+                            ? request.getTimestamp()
+                            : OffsetDateTime.now();
+
+            Device device =
+                    deviceRepository.findById(deviceId)
+                            .orElseThrow(() ->
+                                    new IllegalArgumentException(
+                                            "Device not found: " + deviceId
+                                    )
+                            );
+
+            /*
+             * 1. FILTER ALLOWED METRICS
+             */
+
+            Map<String, Object> allowedData =
+                    filterAllowedMetrics(
+                            request.getMetricData()
+                    );
+
+            if (allowedData.isEmpty()) {
+
+                log.warn(
+                        "No allowed metrics found. Device ID: {}",
+                        deviceId
+                );
+
+                return ApiResponse.error(
+                        "No supported metric data"
+                );
+            }
+
+            /*
+             * 2. SAVE ALL ALLOWED METRICS TO REDIS
+             */
+
+            saveAllMetricsToRedis(
+                    deviceId,
+                    allowedData,
+                    timestamp
+            );
+
+            /*
+             * 3. FILTER METRICS FOR POSTGRESQL
+             */
+
+            Map<String, Object> postgresData =
+                    filterMetricsForPostgres(
+                            allowedData
+                    );
+
+            /*
+             * 4. SAVE POSTGRESQL
+             */
+
+            if (postgresData.isEmpty()) {
+
+                log.info(
+                        "Metrics saved to Redis only. Device ID: {}, data: {}",
+                        deviceId,
+                        allowedData
+                );
+
+                return ApiResponse.success(
+                        "Metric saved to Redis successfully",
+                        null
+                );
+            }
+
+            Metric metric = new Metric();
+
+            metric.setDevice(device);
+
+            metric.setMetricData(postgresData);
+
+            metric.setTimestamp(timestamp);
+
+            Metric savedMetric =
+                    metricRepository.saveAndFlush(metric);
+
+            MetricResponse response =
+                    MetricResponse.builder()
+                            .id(savedMetric.getId())
+                            .deviceId(deviceId)
+                            .deviceName(device.getDeviceName())
+                            .metricData(savedMetric.getMetricData())
+                            .timestamp(savedMetric.getTimestamp())
+                            .build();
 
             log.info(
-                "Metric inserted successfully: metricId={}, deviceId={}, timestamp={}",
-                savedMetric.getId(),
-                request.getDeviceId(),
-                savedMetric.getTimestamp()
-            );
-
-            return ApiResponse.success(
-                "Metric inserted successfully",
-                response
-            );
-
-        } catch (Exception e) {
-
-            log.error("Failed to insert metric", e);
-
-            return ApiResponse.error(getErrorMessage(e));
-        }
-    }
-
-    /**
-     * Lấy giá trị metric mới nhất theo deviceId và metricName.
-     */
-    @Override
-    @Transactional(readOnly = true)
-    public ApiResponse<MetricValueResponse> getLatestMetricValue(
-        Long deviceId,
-        String metricName
-    ) {
-
-        try {
-
-            if (deviceId == null) {
-                return ApiResponse.error("Device ID cannot be null");
-            }
-
-            if (metricName == null || metricName.isBlank()) {
-                return ApiResponse.error("Metric name cannot be empty");
-            }
-
-            if (!deviceRepository.existsById(deviceId)) {
-                return ApiResponse.error(
-                    "Device not found with ID: " + deviceId
-                );
-            }
-
-            List<MetricValueProjection> results =
-                metricRepository.findLatestMetricValue(
+                    "Metric saved successfully. Device ID: {}, PostgreSQL: {}",
                     deviceId,
-                    metricName,
-                    org.springframework.data.domain.PageRequest.of(0, 1)
-                );
-
-            if (results.isEmpty()) {
-                return ApiResponse.error(
-                    "No metric data found for: " + metricName
-                );
-            }
-
-            MetricValueProjection result = results.get(0);
-
-            MetricValueResponse response = MetricValueResponse.builder()
-                .deviceId(result.getDeviceId())
-                .metricName(metricName)
-                .value(new java.math.BigDecimal(result.getMetricValue()))
-                .timestamp(result.getTimestamp())
-                .build();
+                    postgresData
+            );
 
             return ApiResponse.success(
-                "Latest metric retrieved successfully",
-                response
+                    "Metric saved successfully",
+                    response
             );
 
         } catch (Exception e) {
 
-            log.error("Failed to get latest metric value", e);
+            log.error(
+                    "Failed to insert metric",
+                    e
+            );
 
-            return ApiResponse.error(getErrorMessage(e));
+            return ApiResponse.error(
+                    "Failed to insert metric: " + e.getMessage()
+            );
         }
     }
 
-
-    /**
-     * Lấy lịch sử metric theo deviceId và metricName.
+    /*
+     * =========================================================
+     * FILTER ALLOWED METRICS
+     * =========================================================
      */
-    @Override
-    @Transactional(readOnly = true)
-    public Page<MetricValueResponse> getMetricHistory(
-        Long deviceId,
-        String metricName,
-        Pageable pageable
+
+    private Map<String, Object> filterAllowedMetrics(
+            Map<String, Object> metricData
     ) {
 
-        if (deviceId == null) {
-            throw new IllegalArgumentException("Device ID cannot be null");
-        }
+        Map<String, Object> result =
+                new LinkedHashMap<>();
 
-        if (metricName == null || metricName.isBlank()) {
-            throw new IllegalArgumentException("Metric name cannot be empty");
-        }
+        for (Map.Entry<String, Object> entry :
+                metricData.entrySet()) {
 
-        if (!deviceRepository.existsById(deviceId)) {
-            throw new IllegalArgumentException(
-                "Device not found with ID: " + deviceId
+            String metricName =
+                    normalizeMetricKey(entry.getKey());
+
+            if (!ALLOWED_METRICS.contains(metricName)) {
+                continue;
+            }
+
+            Object value = entry.getValue();
+
+            if (value == null) {
+                continue;
+            }
+
+            result.put(
+                    metricName,
+                    value
             );
         }
 
-        Page<MetricValueProjection> results =
-            metricRepository.findMetricHistory(
-                deviceId,
-                metricName,
-                pageable
-            );
-
-        return results.map(result -> MetricValueResponse.builder()
-            .deviceId(result.getDeviceId())
-            .metricName(metricName)
-            .value(new java.math.BigDecimal(result.getMetricValue()))
-            .timestamp(result.getTimestamp())
-            .build()
-        );
+        return result;
     }
 
-    /**
-     * Tự động xóa metric đã quá 24 giờ.
+    /*
+     * =========================================================
+     * SAVE ALL METRICS TO REDIS
+     * =========================================================
      *
-     * Chạy vào phút 0 của mỗi giờ.
+     * Each metric has one Redis List.
+     *
+     * LPUSH:
+     * Add newest sample to the beginning.
+     *
+     * LTRIM:
+     * Keep maximum 15 samples.
+     *
+     * EXPIRE:
+     * Expire after 20 minutes.
      */
-    @Scheduled(cron = "0 0 * * * *")
+
+    private void saveAllMetricsToRedis(
+            Long deviceId,
+            Map<String, Object> metricData,
+            OffsetDateTime timestamp
+    ) throws JsonProcessingException {
+
+        for (Map.Entry<String, Object> entry :
+                metricData.entrySet()) {
+
+            String metricName =
+                    normalizeMetricKey(entry.getKey());
+
+            if (metricName.isBlank()) {
+                continue;
+            }
+
+            String redisKey =
+                    REDIS_PREFIX + deviceId + ":" + metricName;
+
+            Map<String, Object> sample =
+                    new LinkedHashMap<>();
+
+            sample.put(
+                    "deviceId",
+                    deviceId
+            );
+
+            sample.put(
+                    "metricName",
+                    metricName
+            );
+
+            sample.put(
+                    "value",
+                    entry.getValue()
+            );
+
+            sample.put(
+                    "timestamp",
+                    timestamp.toString()
+            );
+
+            String json =
+                    objectMapper.writeValueAsString(sample);
+
+            /*
+             * Insert newest sample.
+             */
+
+            redisTemplate.opsForList().leftPush(
+                    redisKey,
+                    json
+            );
+
+            /*
+             * Keep latest 15 samples.
+             */
+
+            redisTemplate.opsForList().trim(
+                    redisKey,
+                    0,
+                    MAX_REDIS_SAMPLES - 1
+            );
+
+            /*
+             * Set TTL.
+             */
+
+            redisTemplate.expire(
+                    redisKey,
+                    REDIS_TTL
+            );
+        }
+    }
+
+    /*
+     * =========================================================
+     * NORMALIZE METRIC KEY
+     * =========================================================
+     */
+
+    private String normalizeMetricKey(String metricName) {
+
+        if (metricName == null) {
+            return "";
+        }
+
+        return metricName
+                .trim()
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "_")
+                .replaceAll("^_+|_+$", "");
+    }
+
+    /*
+     * =========================================================
+     * FILTER METRICS FOR POSTGRESQL
+     * =========================================================
+     *
+     * cpu_usage:
+     * - Number
+     * - Map
+     *
+     * ram_usage_percent:
+     * - Number
+     */
+
+    private Map<String, Object> filterMetricsForPostgres(
+            Map<String, Object> metricData
+    ) {
+
+        Map<String, Object> result =
+                new LinkedHashMap<>();
+
+        for (String metricName : POSTGRES_METRICS) {
+
+            Object value =
+                    metricData.get(metricName);
+
+            if (value == null) {
+                continue;
+            }
+
+            if ("cpu_usage".equals(metricName)) {
+
+                /*
+                 * Cisco:
+                 * {
+                 *   "19": 1,
+                 *   "20": 0
+                 * }
+                 *
+                 * Fortinet / Peplink:
+                 * 15.00
+                 */
+
+                if (value instanceof Number
+                        || value instanceof Map<?, ?>) {
+
+                    result.put(
+                            metricName,
+                            value
+                    );
+                }
+
+            } else if (value instanceof Number) {
+
+                result.put(
+                        metricName,
+                        value
+                );
+            }
+        }
+
+        return result;
+    }
+
+    /*
+     * =========================================================
+     * DELETE EXPIRED METRICS
+     * =========================================================
+     *
+     * Delete PostgreSQL metrics older than 24 hours.
+     *
+     * Run at minute 00 every hour.
+     */
+
+    @Override
     @Transactional
-    public void deleteExpiredMetricsAutomatically() {
+    @Scheduled(
+            cron = "0 0 * * * *",
+            zone = "Asia/Ho_Chi_Minh"
+    )
+    public ApiResponse<Integer> deleteExpiredMetrics() {
 
         try {
 
-            OffsetDateTime cutoff = OffsetDateTime.now().minusHours(24);
+            OffsetDateTime cutoff =
+                    OffsetDateTime.now().minusHours(24);
 
-            int deletedCount = metricRepository.deleteExpiredMetrics(cutoff);
+            int deletedCount =
+                    metricRepository.deleteExpiredMetrics(
+                            cutoff
+                    );
 
-            if (deletedCount > 0) {
-                log.info(
-                    "Automatically deleted {} expired metrics. Cutoff: {}",
-                    deletedCount,
-                    cutoff
-                );
-            }
+            log.info(
+                    "Deleted {} expired metric records",
+                    deletedCount
+            );
+
+            return ApiResponse.success(
+                    "Expired metrics deleted successfully",
+                    deletedCount
+            );
 
         } catch (Exception e) {
 
-            log.error("Failed to delete expired metrics", e);
+            log.error(
+                    "Failed to delete expired metrics",
+                    e
+            );
+
+            return ApiResponse.error(
+                    "Failed to delete expired metrics: "
+                            + e.getMessage()
+            );
         }
     }
 
-    /**
-     * Chuyển Entity sang Response.
-     */
-    private MetricResponse toResponse(Metric metric) {
+        @Override
+        @Transactional(readOnly = true)
+        public ApiResponse<Map<String, Object>> getLatestMetrics(
+                Long deviceId
+        ) {
 
-        return MetricResponse.builder()
-            .id(metric.getId())
-            .deviceId(metric.getDevice().getId())
-            .deviceName(metric.getDevice().getDeviceName())
-            .metricData(metric.getMetricData())
-            .timestamp(metric.getTimestamp())
-            .build();
-    }
+        try {
 
-    /**
-     * Lấy thông báo lỗi chi tiết từ exception.
-     */
-    private String getErrorMessage(Throwable throwable) {
+                if (deviceId == null) {
+                return ApiResponse.error("Device ID is required");
+                }
 
-        Throwable cause = throwable;
+                Device device = deviceRepository.findById(deviceId)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Device not found: " + deviceId
+                                )
+                        );
 
-        while (cause.getCause() != null) {
-            cause = cause.getCause();
+                Map<String, Object> result = new LinkedHashMap<>();
+
+                for (String metricName : ALLOWED_METRICS) {
+
+                String redisKey =
+                        REDIS_PREFIX + deviceId + ":" + metricName;
+
+                // LPUSH => index 0 là sample mới nhất
+                String json = redisTemplate.opsForList()
+                        .index(redisKey, 0);
+
+                if (json == null) {
+                        continue;
+                }
+
+                JsonNode sample = objectMapper.readTree(json);
+
+                JsonNode valueNode = sample.get("value");
+
+                if (valueNode == null || valueNode.isNull()) {
+                        continue;
+                }
+
+                Object value = objectMapper.convertValue(
+                        valueNode,
+                        Object.class
+                );
+
+                Map<String, Object> metric = new LinkedHashMap<>();
+
+                metric.put("value", value);
+
+                metric.put(
+                        "timestamp",
+                        sample.hasNonNull("timestamp")
+                                ? sample.get("timestamp").asText()
+                                : null
+                );
+
+                result.put(metricName, metric);
+                }
+
+                log.info(
+                        "Retrieved latest metrics from Redis. Device ID: {}, count: {}",
+                        deviceId,
+                        result.size()
+                );
+
+                return ApiResponse.success(
+                        "Latest metrics retrieved successfully",
+                        result
+                );
+
+        } catch (Exception e) {
+
+                log.error(
+                        "Failed to get latest metrics. Device ID: {}",
+                        deviceId,
+                        e
+                );
+
+                return ApiResponse.error(
+                        "Failed to get latest metrics: " + e.getMessage()
+                );
+        }
         }
 
-        return cause.getMessage() != null
-            ? cause.getMessage()
-            : "An unexpected error occurred";
-    }
+        @Override
+        @Transactional(readOnly = true)
+        public ApiResponse<List<MetricResponse>> getCpuHistory(
+                Long deviceId
+        ) {
 
-    
+        try {
+
+                if (deviceId == null) {
+                return ApiResponse.error("Device ID is required");
+                }
+
+                Device device = deviceRepository.findById(deviceId)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Device not found: " + deviceId
+                                )
+                        );
+
+                List<MetricHistoryRow> rows =
+                        metricHistoryMapper.findCpuHistory(
+                                deviceId
+                        );
+
+                List<MetricResponse> result = new ArrayList<>();
+
+                for (MetricHistoryRow row : rows) {
+
+                if (row.getMetricValueJson() == null) {
+                        continue;
+                }
+
+                Object cpuValue = objectMapper.readValue(
+                        row.getMetricValueJson(),
+                        Object.class
+                );
+
+                Map<String, Object> metricData =
+                        new LinkedHashMap<>();
+
+                metricData.put("cpu_usage", cpuValue);
+
+                MetricResponse response = MetricResponse.builder()
+                        .id(row.getId())
+                        .deviceId(deviceId)
+                        .deviceName(device.getDeviceName())
+                        .metricData(metricData)
+                        .timestamp(row.getTimestamp())
+                        .build();
+
+                result.add(response);
+                }
+
+                // Đảo DESC thành ASC để hiển thị biểu đồ
+                Collections.reverse(result);
+
+                log.info(
+                        "Retrieved CPU history. Device ID: {}, records: {}",
+                        deviceId,
+                        result.size()
+                );
+
+                return ApiResponse.success(
+                        "CPU history retrieved successfully",
+                        result
+                );
+
+        } catch (Exception e) {
+
+                log.error(
+                        "Failed to get CPU history. Device ID: {}",
+                        deviceId,
+                        e
+                );
+
+                return ApiResponse.error(
+                        "Failed to get CPU history: " + e.getMessage()
+                );
+        }
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public ApiResponse<List<MetricResponse>> getRamHistory(
+                Long deviceId
+        ) {
+
+        try {
+
+                if (deviceId == null) {
+                return ApiResponse.error("Device ID is required");
+                }
+
+                Device device = deviceRepository.findById(deviceId)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Device not found: " + deviceId
+                                )
+                        );
+
+                List<MetricHistoryRow> rows =
+                        metricHistoryMapper.findRamHistory(
+                                deviceId
+                        );
+
+                List<MetricResponse> result = new ArrayList<>();
+
+                for (MetricHistoryRow row : rows) {
+
+                if (row.getMetricValueJson() == null) {
+                        continue;
+                }
+
+                Object ramValue = objectMapper.readValue(
+                        row.getMetricValueJson(),
+                        Object.class
+                );
+
+                Map<String, Object> metricData =
+                        new LinkedHashMap<>();
+
+                metricData.put(
+                        "ram_usage_percent",
+                        ramValue
+                );
+
+                MetricResponse response = MetricResponse.builder()
+                        .id(row.getId())
+                        .deviceId(deviceId)
+                        .deviceName(device.getDeviceName())
+                        .metricData(metricData)
+                        .timestamp(row.getTimestamp())
+                        .build();
+
+                result.add(response);
+                }
+
+                // Đảo DESC thành ASC để hiển thị biểu đồ
+                Collections.reverse(result);
+
+                log.info(
+                        "Retrieved RAM history. Device ID: {}, records: {}",
+                        deviceId,
+                        result.size()
+                );
+
+                return ApiResponse.success(
+                        "RAM history retrieved successfully",
+                        result
+                );
+
+        } catch (Exception e) {
+
+                log.error(
+                        "Failed to get RAM history. Device ID: {}",
+                        deviceId,
+                        e
+                );
+
+                return ApiResponse.error(
+                        "Failed to get RAM history: " + e.getMessage()
+                );
+        }
+        }
 }

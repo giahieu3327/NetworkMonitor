@@ -586,3 +586,576 @@
     flex: 1;
   }
 }
+
+
+.import-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.import-modal {
+  background: white;
+  padding: 24px;
+  border-radius: 10px;
+  width: 420px;
+  max-width: 90%;
+}
+
+.import-modal h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.import-modal form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.import-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.import-modal button,
+.import-user-button,
+.export-user-button {
+  padding: 9px 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.import-modal button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+/* =================================
+   DEVICE CREATE MODAL
+================================= */
+
+.device-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 16px;
+  box-sizing: border-box;
+
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(4px);
+}
+
+/* Modal container */
+
+.device-create-modal {
+  width: 100%;
+  max-width: 720px;
+
+  height: 90vh;
+  max-height: 90vh;
+  min-height: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+
+  animation: deviceModalAppear 0.2s ease-out;
+  box-sizing: border-box;
+}
+
+@keyframes deviceModalAppear {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header - luôn hiển thị */
+
+.device-modal-header {
+  flex: 0 0 auto;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+
+  padding: 20px 26px;
+
+  border-bottom: 1px solid #e9edf3;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.device-modal-header h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.device-modal-header p {
+  margin: 7px 0 0;
+  color: #8490a3;
+  font-size: 13px;
+}
+
+.device-modal-close {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+
+  border: none;
+  border-radius: 8px;
+
+  background: #f1f4f8;
+  color: #64748b;
+
+  font-size: 25px;
+  line-height: 1;
+  cursor: pointer;
+
+  transition: 0.2s;
+}
+
+.device-modal-close:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* Form phải chiếm phần chiều cao còn lại */
+
+.device-create-modal form {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+}
+
+/* Body - khu vực cuộn dọc */
+
+.device-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 0;
+
+  padding: 8px 26px 20px;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f8fafc;
+
+  box-sizing: border-box;
+}
+
+.device-modal-body::-webkit-scrollbar {
+  width: 7px;
+}
+
+.device-modal-body::-webkit-scrollbar-track {
+  background: #f8fafc;
+  border-radius: 10px;
+}
+
+.device-modal-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.device-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Form sections */
+
+.device-form-section {
+  padding: 20px 0;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.device-form-section:last-child {
+  border-bottom: none;
+}
+
+.device-form-section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  margin-bottom: 19px;
+}
+
+.device-step-number {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 10px;
+  background: #eaf2ff;
+  color: #2563eb;
+
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.device-form-section-title h3 {
+  margin: 0;
+  color: #263247;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.device-form-section-title p {
+  margin: 4px 0 0;
+  color: #8994a6;
+  font-size: 12px;
+}
+
+/* Form layout */
+
+.device-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.device-form-group {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.device-form-full {
+  grid-column: 1 / -1;
+}
+
+.device-form-group > label {
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.device-form-group > label span {
+  color: #ef4444;
+}
+
+.device-form-group input:not([type="checkbox"]),
+.device-form-group select {
+  width: 100%;
+  height: 42px;
+
+  box-sizing: border-box;
+  padding: 0 12px;
+
+  border: 1px solid #dce2eb;
+  border-radius: 8px;
+  outline: none;
+
+  background: #fff;
+  color: #263247;
+
+  font-size: 13px;
+
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.device-form-group input::placeholder {
+  color: #aab3c1;
+}
+
+.device-form-group input:focus,
+.device-form-group select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Credential checkbox */
+
+.device-form-group .device-active-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+
+  cursor: pointer;
+}
+
+.device-active-label input {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+/* OID upload */
+
+.oid-upload-area {
+  min-height: 145px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+
+  padding: 20px;
+  box-sizing: border-box;
+
+  border: 1.5px dashed #b9c8df;
+  border-radius: 11px;
+
+  background: #f8faff;
+
+  cursor: pointer;
+  transition: 0.2s;
+  text-align: center;
+}
+
+.oid-upload-area:hover {
+  border-color: #3b82f6;
+  background: #f0f6ff;
+}
+
+.oid-upload-area input {
+  display: none;
+}
+
+.oid-upload-icon {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+  background: #e5efff;
+  color: #2563eb;
+
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.oid-upload-area strong {
+  max-width: 100%;
+
+  overflow: hidden;
+
+  color: #334155;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oid-upload-area > span:last-child {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+/* Footer - luôn hiển thị */
+
+.device-modal-footer {
+  flex: 0 0 auto;
+
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+
+  padding: 15px 26px;
+
+  border-top: 1px solid #e9edf3;
+  background: #fff;
+
+  box-sizing: border-box;
+}
+
+.device-cancel-button,
+.device-submit-button {
+  min-width: 105px;
+  height: 40px;
+
+  padding: 0 17px;
+
+  border-radius: 8px;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.device-cancel-button {
+  border: 1px solid #dce2eb;
+  background: #fff;
+  color: #64748b;
+}
+
+.device-cancel-button:hover {
+  background: #f5f7fa;
+}
+
+.device-submit-button {
+  border: none;
+  background: #2563eb;
+  color: #fff;
+}
+
+.device-submit-button:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.device-submit-button:disabled,
+.device-cancel-button:disabled,
+.device-modal-close:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+
+@media (max-width: 600px) {
+  .device-modal-overlay {
+    padding: 8px;
+  }
+
+  .device-create-modal {
+    height: 94vh;
+    max-height: 94vh;
+  }
+
+  .device-modal-header {
+    padding: 16px 18px;
+  }
+
+  .device-modal-body {
+    padding: 5px 18px 15px;
+  }
+
+  .device-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .device-form-full {
+    grid-column: auto;
+  }
+
+  .device-modal-footer {
+    padding: 13px 18px;
+  }
+}
+
+/* Credential cards */
+
+.credential-card {
+  padding: 18px;
+  margin-bottom: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.credential-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.credential-card-header > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.credential-card-header strong {
+  color: #263247;
+  font-size: 14px;
+}
+
+.credential-protocol-badge {
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: #e0edff;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.credential-remove-button {
+  padding: 6px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fff;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.credential-remove-button:hover {
+  background: #fee2e2;
+}
+
+.credential-add-button {
+  width: 100%;
+  min-height: 40px;
+  border: 1px dashed #3b82f6;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.credential-add-button:hover {
+  background: #dbeafe;
+}
+
+.credential-add-button:disabled,
+.credential-remove-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

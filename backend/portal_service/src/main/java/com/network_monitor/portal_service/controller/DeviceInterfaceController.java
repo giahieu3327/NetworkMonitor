@@ -65,49 +65,6 @@ public class DeviceInterfaceController {
         }
     }
 
-
-    // ======================================================
-    // GET MONITORED INTERFACES BY DEVICE ID
-    // ======================================================
-
-    @GetMapping("/monitored")
-    public ResponseEntity<ApiResponse<Page<DeviceInterfaceResponse>>>
-    getMonitoredInterfacesByDeviceId(
-            @PathVariable Long deviceId,
-            @ModelAttribute SearchRequest request) {
-
-        try {
-
-            Page<DeviceInterfaceResponse> result =
-                    interfaceService.getMonitoredInterfacesByDeviceId(
-                            deviceId,
-                            request
-                    );
-
-            return ResponseEntity.ok(
-                    ApiResponse.success(
-                            "Lấy danh sách interface đang monitoring thành công",
-                            result
-                    )
-            );
-
-        } catch (IllegalArgumentException e) {
-
-            return ResponseEntity
-                    .status(HttpStatus.NOT_FOUND)
-                    .body(ApiResponse.error(e.getMessage()));
-
-        } catch (Exception e) {
-
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(ApiResponse.error(
-                            "Không thể lấy danh sách interface đang monitoring"
-                    ));
-        }
-    }
-
-
     // ======================================================
     // GET INTERFACE DETAIL
     // ======================================================

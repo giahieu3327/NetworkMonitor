@@ -166,6 +166,17 @@ start_service() {
     check_service_directory
     check_node
 
+    cd "$SERVICE_DIR" || exit 1
+
+    if [ ! -d "node_modules" ] || [ ! -d "node_modules/xlsx" ]; then
+        echo ""
+        echo "Đang cài đặt dependencies..."
+        npm install --prefer-offline --no-audit --no-fund || {
+            echo "Cài đặt dependencies thất bại."
+            exit 1
+        }
+    fi
+
     SERVICE_PID=$(get_service_pid)
 
     if [ -n "$SERVICE_PID" ]; then

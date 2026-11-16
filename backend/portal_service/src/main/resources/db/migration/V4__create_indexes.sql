@@ -4,10 +4,6 @@ ON devices(status);
 CREATE INDEX idx_device_credentials_device_active
 ON device_credentials(device_id, is_active);
 
-CREATE INDEX idx_device_interfaces_monitor
-ON device_interfaces(device_id, interface_index)
-WHERE is_monitor = TRUE;
-
 CREATE INDEX idx_oid_configs_device_active
 ON oid_configs(device_id, is_active);
 

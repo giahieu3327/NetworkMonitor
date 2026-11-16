@@ -34,7 +34,7 @@ public class ArpMacTable {
 
     // PostgreSQL INET.
     @ColumnTransformer(
-        read = "ip_address::text",
+        read = "host(ip_address)",
         write = "?::inet"
     )
     @Column(
@@ -45,6 +45,10 @@ public class ArpMacTable {
     private String ipAddress;
 
     // PostgreSQL MACADDR.
+    @ColumnTransformer(
+        read = "mac_address::text",
+        write = "?::macaddr"
+    )
     @Column(
         name = "mac_address",
         columnDefinition = "macaddr",
@@ -55,11 +59,6 @@ public class ArpMacTable {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "device_id", nullable = false)
     private Device device;
-
-    // Có thể NULL nếu không xác định được interface.
-    // Không khai báo quan hệ DeviceInterface vì schema không có FK này.
-    @Column(name = "interface_index")
-    private Integer interfaceIndex;
 
     @Builder.Default
     @Column(name = "updated_at", nullable = false)

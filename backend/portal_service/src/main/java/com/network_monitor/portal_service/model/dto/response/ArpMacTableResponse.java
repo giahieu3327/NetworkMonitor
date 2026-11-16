@@ -17,8 +17,6 @@ public class ArpMacTableResponse {
 
     private String deviceName;
 
-    private Integer interfaceIndex;
-
     private String ipAddress;
 
     private String macAddress;

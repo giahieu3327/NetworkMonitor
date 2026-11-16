@@ -93,11 +93,6 @@ public class DeviceInterface {
     )
     private String subnetMask;
 
-    // Chỉ interface được bật mới được polling định kỳ.
-    @Builder.Default
-    @Column(name = "is_monitor", nullable = false)
-    private Boolean isMonitor = false;
-
     @Builder.Default
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt = OffsetDateTime.now();

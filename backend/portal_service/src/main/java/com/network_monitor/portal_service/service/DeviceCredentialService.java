@@ -18,6 +18,7 @@ public interface DeviceCredentialService {
     );
 
     ApiResponse<Map<String, Object>> createCredentialsFromExcel(
+            Long id,
             MultipartFile file
     );
 
@@ -37,7 +38,7 @@ public interface DeviceCredentialService {
 
     ApiResponse<DeviceCredentialResponse> getCredentialById(Long id);
 
-    byte[] exportCredentials() throws IOException;
+    byte[] exportCredentials(Long deviceId) throws IOException;
 
     byte[] downloadCredentialImportTemplate() throws IOException;
 }
