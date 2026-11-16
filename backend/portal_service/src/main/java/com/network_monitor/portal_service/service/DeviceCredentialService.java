@@ -7,8 +7,8 @@ import com.network_monitor.portal_service.model.dto.response.ApiResponse;
 import com.network_monitor.portal_service.model.dto.response.DeviceCredentialResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.web.multipart.MultipartFile;
-import java.io.IOException;
 
+import java.io.IOException;
 import java.util.Map;
 
 public interface DeviceCredentialService {
@@ -37,5 +37,7 @@ public interface DeviceCredentialService {
 
     ApiResponse<DeviceCredentialResponse> getCredentialById(Long id);
 
-    byte[] exportCredentialsToExcel() throws IOException;
+    byte[] exportCredentials() throws IOException;
+
+    byte[] downloadCredentialImportTemplate() throws IOException;
 }

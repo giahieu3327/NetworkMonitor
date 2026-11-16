@@ -226,6 +226,15 @@ info:
     description: "Network Monitoring System Portal Service"
     version: "1.0.0"
 
+snmp:
+  fortigate:
+    host: 172.16.200.65
+    port: 161
+    version: 2c
+    community: FortiSNMP2026
+    timeout: 3000
+    retries: 1
+    polling-interval: 60000
 
 # ==============================================================
 # 18. Logging

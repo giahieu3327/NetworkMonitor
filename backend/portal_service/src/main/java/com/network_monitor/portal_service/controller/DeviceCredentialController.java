@@ -1,4 +1,3 @@
-
 package com.network_monitor.portal_service.controller;
 
 import com.network_monitor.portal_service.model.dto.request.DeviceCredentialRequest;
@@ -11,15 +10,14 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 
 import java.io.IOException;
-
 import java.util.Map;
 
 @RestController
@@ -29,10 +27,17 @@ public class DeviceCredentialController {
 
     private final DeviceCredentialService deviceCredentialService;
 
+    private static final String EXCEL_CONTENT_TYPE =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    // =========================================================
+    // CREATE
+    // =========================================================
+
     @PostMapping
     public ResponseEntity<ApiResponse<DeviceCredentialResponse>> addCredential(
-            @Valid @RequestBody DeviceCredentialRequest request
-    ) {
+            @Valid @RequestBody DeviceCredentialRequest request) {
+
         ApiResponse<DeviceCredentialResponse> response =
                 deviceCredentialService.addCredential(request);
 
@@ -43,13 +48,17 @@ public class DeviceCredentialController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    // =========================================================
+    // IMPORT / EXPORT
+    // =========================================================
+
     @PostMapping(
             value = "/import",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
-    public ResponseEntity<ApiResponse<Map<String, Object>>> createCredentialsFromExcel(
-            @RequestParam("file") MultipartFile file
-    ) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> importCredentials(
+            @RequestParam("file") MultipartFile file) {
+
         ApiResponse<Map<String, Object>> response =
                 deviceCredentialService.createCredentialsFromExcel(file);
 
@@ -60,28 +69,37 @@ public class DeviceCredentialController {
         return ResponseEntity.ok(response);
     }
 
-        @GetMapping("/export")
-        public ResponseEntity<byte[]> exportCredentialsToExcel()
-                throws IOException {
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportCredentials()
+            throws IOException {
 
-        byte[] file = deviceCredentialService.exportCredentialsToExcel();
+        return downloadFile(
+                deviceCredentialService.exportCredentials(),
+                "device-credentials.xlsx",
+                EXCEL_CONTENT_TYPE
+        );
+    }
 
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                ))
-                .header(
-                        HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"device-credentials.xlsx\""
-                )
-                .body(file);
-        }
+    @GetMapping("/import/template")
+    public ResponseEntity<byte[]> downloadCredentialImportTemplate()
+            throws IOException {
+
+        return downloadFile(
+                deviceCredentialService.downloadCredentialImportTemplate(),
+                "device-credentials-import-template.xlsx",
+                EXCEL_CONTENT_TYPE
+        );
+    }
+
+    // =========================================================
+    // UPDATE
+    // =========================================================
 
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> updateCredential(
             @PathVariable Long id,
-            @Valid @RequestBody DeviceCredentialRequest request
-    ) {
+            @Valid @RequestBody DeviceCredentialRequest request) {
+
         ApiResponse<Void> response =
                 deviceCredentialService.updateCredential(id, request);
 
@@ -92,10 +110,14 @@ public class DeviceCredentialController {
         return ResponseEntity.ok(response);
     }
 
+    // =========================================================
+    // DELETE
+    // =========================================================
+
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteCredential(
-            @PathVariable Long id
-    ) {
+            @PathVariable Long id) {
+
         ApiResponse<Void> response =
                 deviceCredentialService.deleteCredential(id);
 
@@ -108,8 +130,8 @@ public class DeviceCredentialController {
 
     @DeleteMapping("/device/{deviceId}")
     public ResponseEntity<ApiResponse<Void>> deleteCredentialsByDeviceId(
-            @PathVariable Long deviceId
-    ) {
+            @PathVariable Long deviceId) {
+
         ApiResponse<Void> response =
                 deviceCredentialService.deleteCredentialsByDeviceId(deviceId);
 
@@ -120,11 +142,15 @@ public class DeviceCredentialController {
         return ResponseEntity.ok(response);
     }
 
+    // =========================================================
+    // QUERY
+    // =========================================================
+
     @GetMapping("/device/{deviceId}")
     public ResponseEntity<Page<DeviceCredentialResponse>> getCredentialsByDeviceId(
             @PathVariable Long deviceId,
-            @ModelAttribute SearchRequest request
-    ) {
+            @ModelAttribute SearchRequest request) {
+
         return ResponseEntity.ok(
                 deviceCredentialService.getCredentialsByDeviceId(
                         deviceId,
@@ -135,8 +161,8 @@ public class DeviceCredentialController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<DeviceCredentialResponse>> getCredentialById(
-            @PathVariable Long id
-    ) {
+            @PathVariable Long id) {
+
         ApiResponse<DeviceCredentialResponse> response =
                 deviceCredentialService.getCredentialById(id);
 
@@ -146,5 +172,23 @@ public class DeviceCredentialController {
         }
 
         return ResponseEntity.ok(response);
+    }
+
+    // =========================================================
+    // COMMON DOWNLOAD HELPER
+    // =========================================================
+
+    private ResponseEntity<byte[]> downloadFile(
+            byte[] file,
+            String filename,
+            String contentType) {
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + filename + "\""
+                )
+                .body(file);
     }
 }

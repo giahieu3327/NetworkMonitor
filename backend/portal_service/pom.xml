@@ -36,6 +36,7 @@
         <itext.version>2.1.7</itext.version>
         <poi.version>5.2.5</poi.version>
         <dotenv.version>5.2.2</dotenv.version>
+        <snmp4j.version>3.8.2</snmp4j.version>
     </properties>
 
     <dependencies>
@@ -154,6 +155,13 @@
             <groupId>net.sf.jasperreports</groupId>
             <artifactId>jasperreports</artifactId>
             <version>${jasperreports.version}</version>
+        </dependency>
+
+        <!-- SNMP -->
+        <dependency>
+            <groupId>org.snmp4j</groupId>
+            <artifactId>snmp4j</artifactId>
+            <version>${snmp4j.version}</version>
         </dependency>
 
         <!-- 18. iText (PDF Engine cho JasperReports) -->

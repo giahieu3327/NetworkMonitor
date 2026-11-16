@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.network_monitor.portal_service.mapper.MetricMapper">
+
+    <!-- DTO: thông tin thiết bị -->
+    <resultMap id="MetricDeviceMap"
+               type="com.network_monitor.portal_service.model.dto.metric.MetricConfig">
+        <id property="deviceId" column="device_id"/>
+        <result property="deviceName" column="device_name"/>
+        <result property="ipAddress" column="ip_address"/>
+        <result property="deviceType" column="device_type"/>
+    </resultMap>
+
+    <!-- DTO: credential SNMP -->
+    <resultMap id="MetricCredentialMap"
+               type="com.network_monitor.portal_service.model.dto.metric.MetricConfig$Credential">
+        <result property="protocolType" column="protocol_type"/>
+        <result property="communityString" column="community_string"/>
+        <result property="port" column="port"/>
+    </resultMap>
+
+    <!-- DTO: OID configuration -->
+    <resultMap id="MetricOidMap"
+               type="com.network_monitor.portal_service.model.dto.metric.MetricConfig$Oid">
+        <result property="metricScope" column="metric_scope"/>
+        <result property="metricType" column="metric_type"/>
+        <result property="oidPattern" column="oid_pattern"/>
+        <result property="dataType" column="data_type"/>
+        <result property="multiplier" column="multiplier"/>
+        <result property="interfaceIndex" column="interface_index"/>
+    </resultMap>
+
+    <!-- 1. Lấy thiết bị có credential SNMP và OID đang hoạt động -->
+    <select id="findDevicesForMetrics" resultMap="MetricDeviceMap">
+        SELECT
+            d.id AS device_id,
+            d.device_name,
+            host(d.ip_address) AS ip_address,
+            d.device_type
+        FROM devices d
+        WHERE EXISTS (
+            SELECT 1
+            FROM device_credentials dc
+            WHERE dc.device_id = d.id
+              AND dc.credential_type = 'SNMP'
+              AND dc.is_active = TRUE
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM oid_configs oc
+            WHERE oc.device_id = d.id
+              AND oc.is_active = TRUE
+        )
+        ORDER BY d.id
+    </select>
+
+    <!-- 2. Lấy credential SNMP của một thiết bị -->
+    <select id="findActiveSnmpCredentials"
+            resultMap="MetricCredentialMap">
+        SELECT
+            dc.protocol_type,
+            dc.community_string,
+            dc.port
+        FROM device_credentials dc
+        WHERE dc.device_id = #{deviceId}
+          AND dc.credential_type = 'SNMP'
+          AND dc.is_active = TRUE
+        ORDER BY dc.id
+    </select>
+
+    <!-- 3. Lấy OID đang hoạt động của một thiết bị -->
+    <select id="findActiveOidConfigs"
+            resultType="com.network_monitor.portal_service.model.dto.metric.MetricConfig$Oid">
+        SELECT
+            oc.metric_scope AS "metricScope",
+            oc.metric_type AS "metricType",
+            oc.oid_pattern AS "oidPattern",
+            oc.oid_kind AS "oidKind",
+            oc.data_type AS "dataType",
+            oc.multiplier AS "multiplier",
+            oc.interface_index AS "interfaceIndex",
+            di.interface_name AS "interfaceName"
+        FROM oid_configs oc
+        LEFT JOIN device_interfaces di
+            ON di.device_id = oc.device_id
+            AND di.interface_index = oc.interface_index
+        WHERE oc.device_id = #{deviceId}
+        AND oc.is_active = TRUE
+        ORDER BY
+            CASE WHEN oc.metric_scope = 'DEVICE' THEN 0 ELSE 1 END,
+            oc.interface_index,
+            oc.id
+    </select>
+
+</mapper>

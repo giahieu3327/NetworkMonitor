@@ -22,6 +22,8 @@ public class OidConfigResponse {
 
     private String oidPattern;
 
+    private String oidKind;
+    
     private String dataType;
 
     private Double multiplier;

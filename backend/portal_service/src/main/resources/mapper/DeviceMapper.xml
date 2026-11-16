@@ -2,17 +2,21 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.network_monitor.portal_service.mapper.DeviceCredentialMapper">
+<mapper namespace="com.network_monitor.portal_service.mapper.DeviceMapper">
 
     <resultMap id="DeviceResultMap"
                type="com.network_monitor.portal_service.model.entity.Device">
+
         <id property="id" column="id"/>
+
         <result property="deviceName" column="device_name"/>
         <result property="ipAddress" column="ip_address"/>
         <result property="deviceType" column="device_type"/>
         <result property="status" column="status"/>
+
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
+
     </resultMap>
 
     <sql id="SearchWhereClause">
@@ -20,8 +24,10 @@
             <if test="keyword != null and keyword.trim() != ''">
                 (
                     d.device_name ILIKE CONCAT('%', #{keyword}, '%')
-                    OR CAST(d.ip_address AS TEXT) ILIKE CONCAT('%', #{keyword}, '%')
+                    OR CAST(host(d.ip_address) AS TEXT)
+                        ILIKE CONCAT('%', #{keyword}, '%')
                     OR d.device_type ILIKE CONCAT('%', #{keyword}, '%')
+                    OR d.status ILIKE CONCAT('%', #{keyword}, '%')
                 )
             </if>
         </where>
@@ -31,7 +37,7 @@
         SELECT
             d.id,
             d.device_name,
-            d.ip_address,
+            host(d.ip_address) AS ip_address,
             d.device_type,
             d.status,
             d.created_at,

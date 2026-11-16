@@ -20,14 +20,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -41,7 +37,16 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public ApiResponse<Void> register(RegisterRequest request) {
-        if (!request.getPassword().equals(request.getConfirmPassword())) {
+        if (request == null) {
+            return ApiResponse.error(
+                    "Đăng ký thất bại",
+                    "Thông tin đăng ký không được để trống!"
+            );
+        }
+
+        if (request.getPassword() == null
+                || !request.getPassword().equals(
+                        request.getConfirmPassword())) {
             return ApiResponse.error(
                     "Đăng ký thất bại",
                     "Mật khẩu xác nhận không khớp!"
@@ -132,25 +137,30 @@ public class AuthServiceImpl implements AuthService {
 
         if (!keycloakUserResponse.isSuccess()
                 || keycloakUserResponse.getData() == null) {
-            throw new IllegalStateException(
-                    "Không thể lấy thông tin Super Admin từ Keycloak."
+            keyCloakService.deleteUser(keycloakUserId);
+
+            return ApiResponse.error(
+                    "Đăng ký thất bại",
+                    "Không thể lấy thông tin người dùng từ Keycloak."
             );
         }
 
         UserRepresentation keycloakUser =
                 keycloakUserResponse.getData();
 
-        OffsetDateTime createdAt;
+        java.time.OffsetDateTime createdAt;
 
         if (keycloakUser.getCreatedTimestamp() != null) {
-            createdAt = OffsetDateTime.ofInstant(
-                    Instant.ofEpochMilli(
+            createdAt = java.time.OffsetDateTime.ofInstant(
+                    java.time.Instant.ofEpochMilli(
                             keycloakUser.getCreatedTimestamp()
                     ),
-                    ZoneOffset.UTC
+                    java.time.ZoneOffset.UTC
             );
         } else {
-            createdAt = OffsetDateTime.now(ZoneOffset.UTC);
+            createdAt = java.time.OffsetDateTime.now(
+                    java.time.ZoneOffset.UTC
+            );
         }
 
         User user = User.builder()
@@ -193,7 +203,9 @@ public class AuthServiceImpl implements AuthService {
             }
         }
 
-        return ApiResponse.success("Đăng ký tài khoản thành công.");
+        return ApiResponse.success(
+                "Đăng ký tài khoản thành công."
+        );
     }
 
     // ========================= IMPORT USERS =========================
@@ -203,7 +215,9 @@ public class AuthServiceImpl implements AuthService {
             MultipartFile file) {
 
         if (file == null || file.isEmpty()) {
-            return ApiResponse.error("File Excel không được để trống");
+            return ApiResponse.error(
+                    "File Excel không được để trống"
+            );
         }
 
         int totalRows = 0;
@@ -217,7 +231,9 @@ public class AuthServiceImpl implements AuthService {
              Workbook workbook = WorkbookFactory.create(input)) {
 
             if (workbook.getNumberOfSheets() == 0) {
-                return ApiResponse.error("File Excel không có sheet dữ liệu");
+                return ApiResponse.error(
+                        "File Excel không có sheet dữ liệu"
+                );
             }
 
             Sheet sheet = workbook.getSheetAt(0);
@@ -244,7 +260,7 @@ public class AuthServiceImpl implements AuthService {
                     String roleName = getUserCell(row, 6, formatter);
                     String sendEmailValue = getUserCell(row, 7, formatter);
 
-                    // Kiểm tra dữ liệu bắt buộc trước khi gọi register().
+                    // Kiểm tra dữ liệu bắt buộc.
                     if (username.isBlank()
                             || password.isBlank()
                             || confirmPassword.isBlank()
@@ -264,7 +280,8 @@ public class AuthServiceImpl implements AuthService {
                         );
                     }
 
-                    if (password.length() < 8 || password.length() > 100) {
+                    if (password.length() < 8
+                            || password.length() > 100) {
                         throw new IllegalArgumentException(
                                 "Password phải từ 8 đến 100 ký tự"
                         );
@@ -329,7 +346,9 @@ public class AuthServiceImpl implements AuthService {
                             .email(email)
                             .fullName(fullName)
                             .phoneNumber(
-                                    phoneNumber.isBlank() ? null : phoneNumber
+                                    phoneNumber.isBlank()
+                                            ? null
+                                            : phoneNumber
                             )
                             .roleName(roleName)
                             .sendEmailVerify(sendEmailVerify)
@@ -343,12 +362,11 @@ public class AuthServiceImpl implements AuthService {
                     } else {
                         failedCount++;
 
-                        Map<String, Object> error = new LinkedHashMap<>();
+                        Map<String, Object> error =
+                                new LinkedHashMap<>();
+
                         error.put("row", i + 1);
-                        error.put(
-                                "username",
-                                username
-                        );
+                        error.put("username", username);
                         error.put(
                                 "message",
                                 response == null
@@ -362,40 +380,56 @@ public class AuthServiceImpl implements AuthService {
                 } catch (Exception e) {
                     failedCount++;
 
-                    Map<String, Object> error = new LinkedHashMap<>();
+                    Map<String, Object> error =
+                            new LinkedHashMap<>();
+
                     error.put("row", i + 1);
                     error.put(
                             "username",
                             getUserCell(row, 0, formatter)
                     );
-                    error.put("message", getUserImportErrorMessage(e));
+                    error.put(
+                            "message",
+                            getUserImportErrorMessage(e)
+                    );
 
                     errors.add(error);
                 }
             }
 
         } catch (Exception e) {
-            return ApiResponse.error(getUserImportErrorMessage(e));
+            return ApiResponse.error(
+                    getUserImportErrorMessage(e)
+            );
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
+
         result.put("totalRows", totalRows);
         result.put("successCount", successCount);
         result.put("failedCount", failedCount);
         result.put("skippedCount", skippedCount);
         result.put("errors", errors);
 
-        return ApiResponse.success("Import Excel hoàn tất", result);
+        return ApiResponse.success(
+                "Import Excel hoàn tất",
+                result
+        );
     }
 
     // ========================= EXPORT USERS =========================
 
+    /**
+     * Xuất danh sách User ra file Excel bằng Apache POI.
+     */
     @Override
-    public byte[] exportUsersToExcel() throws IOException {
+    public byte[] exportUsers() throws IOException {
+
         List<User> users = userRepository.findAll();
 
         try (Workbook workbook = new XSSFWorkbook();
-             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+             ByteArrayOutputStream output =
+                     new ByteArrayOutputStream()) {
 
             Sheet sheet = workbook.createSheet("Users");
 
@@ -412,12 +446,23 @@ public class AuthServiceImpl implements AuthService {
                     "Updated At"
             };
 
-            Row headerRow = sheet.createRow(0);
-
+            // Header style
             CellStyle headerStyle = workbook.createCellStyle();
+
             Font headerFont = workbook.createFont();
             headerFont.setBold(true);
             headerStyle.setFont(headerFont);
+
+            headerStyle.setFillForegroundColor(
+                    IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex()
+            );
+
+            headerStyle.setFillPattern(
+                    FillPatternType.SOLID_FOREGROUND
+            );
+
+            // Tạo header
+            Row headerRow = sheet.createRow(0);
 
             for (int i = 0; i < headers.length; i++) {
                 Cell cell = headerRow.createCell(i);
@@ -425,49 +470,212 @@ public class AuthServiceImpl implements AuthService {
                 cell.setCellStyle(headerStyle);
             }
 
+            // Ghi dữ liệu User
             int rowIndex = 1;
 
             for (User user : users) {
+
                 Row row = sheet.createRow(rowIndex++);
 
                 row.createCell(0).setCellValue(
-                        Objects.toString(user.getId(), "")
+                        user.getId() != null ? user.getId() : ""
                 );
+
                 row.createCell(1).setCellValue(
-                        Objects.toString(user.getUsername(), "")
+                        user.getUsername() != null
+                                ? user.getUsername() : ""
                 );
+
                 row.createCell(2).setCellValue(
-                        Objects.toString(user.getEmail(), "")
+                        user.getEmail() != null
+                                ? user.getEmail() : ""
                 );
+
                 row.createCell(3).setCellValue(
-                        Objects.toString(user.getFullName(), "")
+                        user.getFullName() != null
+                                ? user.getFullName() : ""
                 );
+
                 row.createCell(4).setCellValue(
-                        Objects.toString(user.getPhoneNumber(), "")
+                        user.getPhoneNumber() != null
+                                ? user.getPhoneNumber() : ""
                 );
+
                 row.createCell(5).setCellValue(
-                        Objects.toString(user.getRoleName(), "")
+                        user.getRoleName() != null
+                                ? user.getRoleName() : ""
                 );
+
                 row.createCell(6).setCellValue(
-                        Boolean.TRUE.equals(user.getIsActive()) ? "Yes" : "No"
+                        Boolean.TRUE.equals(user.getIsActive())
                 );
+
                 row.createCell(7).setCellValue(
-                        Boolean.TRUE.equals(user.getEmailVerified()) ? "Yes" : "No"
+                        Boolean.TRUE.equals(user.getEmailVerified())
                 );
+
                 row.createCell(8).setCellValue(
-                        Objects.toString(user.getCreatedAt(), "")
+                        user.getCreatedAt() != null
+                                ? user.getCreatedAt().toString() : ""
                 );
+
                 row.createCell(9).setCellValue(
-                        Objects.toString(user.getUpdatedAt(), "")
+                        user.getUpdatedAt() != null
+                                ? user.getUpdatedAt().toString() : ""
                 );
             }
 
-            // Tối ưu chiều rộng cột theo dữ liệu.
+            // Tự động điều chỉnh độ rộng cột
             for (int i = 0; i < headers.length; i++) {
                 sheet.autoSizeColumn(i);
+
+                if (sheet.getColumnWidth(i) > 50 * 256) {
+                    sheet.setColumnWidth(i, 50 * 256);
+                }
             }
 
+            // Cố định dòng tiêu đề
+            sheet.createFreezePane(0, 1);
+
+            // Bật bộ lọc
+            sheet.setAutoFilter(
+                    new org.apache.poi.ss.util.CellRangeAddress(
+                            0,
+                            users.size(),
+                            0,
+                            headers.length - 1
+                    )
+            );
+
             workbook.write(output);
+
+            return output.toByteArray();
+        }
+    }
+
+    // ========================= DOWNLOAD IMPORT TEMPLATE =========================
+
+    /**
+     * Tạo file mẫu Excel để import User.
+     *
+     * Apache POI được sử dụng để tạo file Excel.
+     */
+    @Override
+    public byte[] downloadUserImportTemplate() throws IOException {
+        try (Workbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream output =
+                     new ByteArrayOutputStream()) {
+
+            // Sheet dữ liệu import.
+            Sheet usersSheet = workbook.createSheet("Users");
+
+            String[] headers = {
+                    "Username",
+                    "Password",
+                    "Confirm Password",
+                    "Email",
+                    "Full Name",
+                    "Phone Number",
+                    "Role Name",
+                    "Send Email Verify"
+            };
+
+            CellStyle headerStyle = workbook.createCellStyle();
+
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(
+                    IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex()
+            );
+            headerStyle.setFillPattern(
+                    FillPatternType.SOLID_FOREGROUND
+            );
+
+            Row headerRow = usersSheet.createRow(0);
+
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+
+                usersSheet.setColumnWidth(i, 24 * 256);
+            }
+
+            usersSheet.createFreezePane(0, 1);
+            usersSheet.setAutoFilter(
+                    new org.apache.poi.ss.util.CellRangeAddress(
+                            0, 0, 0, headers.length - 1
+                    )
+            );
+
+            // Sheet hướng dẫn.
+            Sheet instructionsSheet =
+                    workbook.createSheet("Instructions");
+
+            String[][] instructions = {
+                    {"Column", "Description"},
+                    {
+                            "Username",
+                            "Bắt buộc, tối đa 50 ký tự và không được trùng."
+                    },
+                    {
+                            "Password",
+                            "Bắt buộc, từ 8 đến 100 ký tự."
+                    },
+                    {
+                            "Confirm Password",
+                            "Bắt buộc và phải giống Password."
+                    },
+                    {
+                            "Email",
+                            "Bắt buộc, đúng định dạng email, tối đa 100 ký tự."
+                    },
+                    {
+                            "Full Name",
+                            "Bắt buộc, tối đa 100 ký tự."
+                    },
+                    {
+                            "Phone Number",
+                            "Không bắt buộc, tối đa 20 ký tự."
+                    },
+                    {
+                            "Role Name",
+                            "Bắt buộc, tối đa 50 ký tự; phải là realm role hợp lệ."
+                    },
+                    {
+                            "Send Email Verify",
+                            "Để trống, Yes/true/1: gửi email xác minh; "
+                                    + "No/false/0: không gửi."
+                    }
+            };
+
+            CellStyle instructionHeaderStyle =
+                    workbook.createCellStyle();
+
+            Font instructionHeaderFont = workbook.createFont();
+            instructionHeaderFont.setBold(true);
+            instructionHeaderStyle.setFont(instructionHeaderFont);
+
+            for (int i = 0; i < instructions.length; i++) {
+                Row row = instructionsSheet.createRow(i);
+
+                for (int j = 0; j < instructions[i].length; j++) {
+                    Cell cell = row.createCell(j);
+                    cell.setCellValue(instructions[i][j]);
+
+                    if (i == 0) {
+                        cell.setCellStyle(instructionHeaderStyle);
+                    }
+                }
+            }
+
+            instructionsSheet.setColumnWidth(0, 28 * 256);
+            instructionsSheet.setColumnWidth(1, 90 * 256);
+            instructionsSheet.createFreezePane(0, 1);
+
+            workbook.write(output);
+
             return output.toByteArray();
         }
     }
@@ -503,7 +711,9 @@ public class AuthServiceImpl implements AuthService {
     // ========================= FORGOT PASSWORD =========================
 
     @Override
-    public ApiResponse<Void> forgotPassword(ForgotPasswordRequest request) {
+    public ApiResponse<Void> forgotPassword(
+            ForgotPasswordRequest request) {
+
         ApiResponse<UserRepresentation> userResponse =
                 keyCloakService.findByEmail(request.getEmail());
 
@@ -530,14 +740,18 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public ApiResponse<String> verifyResetPasswordOtp(
             VerifyResetPasswordOtpRequest request) {
+
         return mailService.verifyPasswordResetOtp(request);
     }
 
     // ========================= RESET PASSWORD =========================
 
     @Override
-    public ApiResponse<Void> resetPassword(ResetPasswordRequest request) {
-        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+    public ApiResponse<Void> resetPassword(
+            ResetPasswordRequest request) {
+
+        if (!request.getNewPassword().equals(
+                request.getConfirmPassword())) {
             return ApiResponse.error(
                     "Đặt lại mật khẩu thất bại",
                     "Mật khẩu xác nhận không khớp!"
@@ -596,7 +810,9 @@ public class AuthServiceImpl implements AuthService {
     // ========================= VERIFY EMAIL =========================
 
     @Override
-    public ApiResponse<String> verifyEmail(VerifyEmailRequest request) {
+    public ApiResponse<String> verifyEmail(
+            VerifyEmailRequest request) {
+
         ApiResponse<String> tokenResponse =
                 mailService.verifyEmailToken(request);
 
@@ -634,7 +850,8 @@ public class AuthServiceImpl implements AuthService {
             );
         }
 
-        User localUser = userRepository.findById(userId).orElse(null);
+        User localUser =
+                userRepository.findById(userId).orElse(null);
 
         if (localUser == null) {
             return ApiResponse.error(
@@ -692,7 +909,8 @@ public class AuthServiceImpl implements AuthService {
     private String getUserImportErrorMessage(Throwable exception) {
         Throwable cause = exception;
 
-        while (cause.getCause() != null && cause.getCause() != cause) {
+        while (cause.getCause() != null
+                && cause.getCause() != cause) {
             cause = cause.getCause();
         }
 
@@ -701,19 +919,23 @@ public class AuthServiceImpl implements AuthService {
                 : "Đã xảy ra lỗi không xác định";
     }
 
-        private String getRegisterErrorMessage(ApiResponse<Void> response) {
+    private String getRegisterErrorMessage(
+            ApiResponse<Void> response) {
+
         Object errorDetails = response.getErrorDetails();
 
-        if (errorDetails != null && !errorDetails.toString().isBlank()) {
-                return errorDetails.toString();
+        if (errorDetails != null
+                && !errorDetails.toString().isBlank()) {
+            return errorDetails.toString();
         }
 
         Object message = response.getMessage();
 
-        if (message != null && !message.toString().isBlank()) {
-                return message.toString();
+        if (message != null
+                && !message.toString().isBlank()) {
+            return message.toString();
         }
 
         return "Đăng ký tài khoản thất bại";
-        }
+    }
 }

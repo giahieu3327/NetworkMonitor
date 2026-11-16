@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,13 +27,31 @@ public class OidConfigRequest {
     private String metricScope;
 
     @NotBlank(message = "Loại chỉ số không được để trống")
-    @Size(max = 100, message = "Loại chỉ số không được vượt quá 100 ký tự")
+    @Size(
+            max = 100,
+            message = "Loại chỉ số không được vượt quá 100 ký tự"
+    )
     private String metricType;
 
+    @NotBlank(message = "OID Kind không được để trống")
+    @Pattern(
+            regexp = "^(SINGLE|TABLE_COLUMN)$",
+            message = "OID Kind phải là SINGLE hoặc TABLE_COLUMN"
+    )
+    private String oidKind;
+
     @NotBlank(message = "Chuỗi OID pattern không được để trống")
+    @Size(
+            max = 255,
+            message = "OID Pattern không được vượt quá 255 ký tự"
+    )
     private String oidPattern;
 
-    @Size(max = 30, message = "Data type không được vượt quá 30 ký tự")
+    @NotBlank(message = "Data type không được để trống")
+    @Size(
+            max = 30,
+            message = "Data type không được vượt quá 30 ký tự"
+    )
     private String dataType;
 
     @DecimalMin(
@@ -43,9 +62,16 @@ public class OidConfigRequest {
     private Double multiplier;
 
     @NotNull(message = "ID thiết bị không được để trống")
-    @Min(value = 1, message = "ID thiết bị phải lớn hơn 0")
+    @Min(
+            value = 1,
+            message = "ID thiết bị phải lớn hơn 0"
+    )
     private Long deviceId;
 
+    @Min(
+            value = 1,
+            message = "Interface Index phải lớn hơn 0"
+    )
     private Integer interfaceIndex;
 
     private Boolean isActive;

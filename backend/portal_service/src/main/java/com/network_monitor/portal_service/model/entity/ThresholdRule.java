@@ -14,70 +14,75 @@ import java.time.OffsetDateTime;
 @Builder
 public class ThresholdRule {
 
-    // ID quy tắc ngưỡng, tự động tăng bằng BIGSERIAL.
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
     private Long id;
 
-    // Tên quy tắc.
     @Column(
-            name = "rule_name",
-            length = 150,
-            nullable = false
+        name = "rule_name",
+        length = 150,
+        nullable = false
     )
     private String ruleName;
 
-    // Loại metric được giám sát.
     @Column(
-            name = "metric_type",
-            length = 100,
-            nullable = false
+        name = "metric_type",
+        length = 100,
+        nullable = false
     )
     private String metricType;
 
-    // Ngưỡng cảnh báo; có thể NULL.
+    // Ngưỡng cảnh báo.
     @Column(name = "warning_limit")
     private Double warningLimit;
 
-    // Ngưỡng nghiêm trọng; có thể NULL.
+    // Ngưỡng nghiêm trọng.
     @Column(name = "critical_limit")
     private Double criticalLimit;
 
-    // Số lần liên tiếp vượt ngưỡng trước khi kích hoạt.
     @Builder.Default
-    @Column(
-            name = "consecutive_occurrences",
-            nullable = false
-    )
+    @Column(name = "consecutive_occurrences", nullable = false)
     private Integer consecutiveOccurrences = 3;
 
-    // Thiết bị áp dụng quy tắc.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "device_id", nullable = false)
     private Device device;
 
-    // Interface áp dụng quy tắc; NULL nếu áp dụng cấp thiết bị.
+    // NULL nếu áp dụng cho toàn bộ thiết bị.
     @Column(name = "interface_index")
     private Integer interfaceIndex;
 
-    // Trạng thái bật/tắt quy tắc.
+    // Quan hệ chỉ đọc tới interface tương ứng.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumns({
+        @JoinColumn(
+            name = "device_id",
+            referencedColumnName = "device_id",
+            insertable = false,
+            updatable = false
+        ),
+        @JoinColumn(
+            name = "interface_index",
+            referencedColumnName = "interface_index",
+            insertable = false,
+            updatable = false
+        )
+    })
+    private DeviceInterface deviceInterface;
+
     @Builder.Default
     @Column(name = "is_enabled", nullable = false)
     private Boolean isEnabled = true;
 
-    // Thời điểm tạo bản ghi.
-    // PostgreSQL DEFAULT CURRENT_TIMESTAMP tự thiết lập.
     @Builder.Default
     @Column(
-            name = "created_at",
-            nullable = false,
-            updatable = false
+        name = "created_at",
+        nullable = false,
+        updatable = false
     )
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
-    // Thời điểm cập nhật gần nhất.
-    // Trigger PostgreSQL tự cập nhật khi UPDATE.
     @Builder.Default
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt = OffsetDateTime.now();
