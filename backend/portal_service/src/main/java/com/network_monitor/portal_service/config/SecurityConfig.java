@@ -116,7 +116,13 @@ public class SecurityConfig {
                                 "/api/v1/auth/send-verification-email",
                                 "/api/v1/auth/verify-email"
                         ).permitAll()
-
+                        
+                        /*
+                        .requestMatchers(
+                                "/**"
+                        ).permitAll()
+                        */
+                       
                         // ================================
                         // CAMUNDA
                         // ================================

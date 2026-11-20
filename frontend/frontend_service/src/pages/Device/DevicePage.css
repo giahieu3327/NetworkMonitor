@@ -483,3 +483,228 @@
   background: #22c55e;
   display: inline-block;
 }
+
+.device-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.device-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.device-summary-actions {
+  display: flex;
+  align-items: center;
+}
+
+.device-export-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  background-color: #2563eb;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.device-export-button:hover {
+  background-color: #1d4ed8;
+}
+
+.device-export-button:active {
+  transform: scale(0.98);
+}
+
+.export-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.export-modal-content {
+  width: 100%;
+  max-width: 520px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.25);
+}
+
+.light-mode .export-modal-content {
+  background-color: #ffffff;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+}
+
+.dark-mode .export-modal-content {
+  background-color: #1e293b;
+  color: #f8fafc;
+  border: 1px solid #334155;
+}
+
+.export-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.export-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.export-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.export-modal-close:hover {
+  opacity: 1;
+}
+
+.export-modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.export-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-form-group > label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.export-radio-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-radio-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(148, 163, 184, 0.35);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.export-radio-card input[type='radio'] {
+  margin-top: 3px;
+  accent-color: #2563eb;
+}
+
+.export-radio-card.selected {
+  border-color: #2563eb;
+  background-color: rgba(37, 99, 235, 0.08);
+}
+
+.export-radio-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.export-radio-card-info strong {
+  font-size: 13px;
+  letter-spacing: 0.2px;
+}
+
+.export-radio-card-info span {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.export-form-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 12px;
+}
+
+.export-form-group input[type='date'],
+.export-form-group select {
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.light-mode .export-form-group input[type='date'],
+.light-mode .export-form-group select {
+  background-color: #f8fafc;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+}
+
+.dark-mode .export-form-group input[type='date'],
+.dark-mode .export-form-group select {
+  background-color: #0f172a;
+  color: #f8fafc;
+  border: 1px solid #475569;
+}
+
+.export-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.export-btn-cancel,
+.export-btn-submit {
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+}
+
+.export-btn-cancel {
+  background-color: rgba(148, 163, 184, 0.2);
+  color: inherit;
+}
+
+.export-btn-submit {
+  background-color: #2563eb;
+  color: #ffffff;
+}
+
+.export-btn-submit:hover:not(:disabled) {
+  background-color: #1d4ed8;
+}
+
+.export-btn-submit:disabled,
+.export-btn-cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

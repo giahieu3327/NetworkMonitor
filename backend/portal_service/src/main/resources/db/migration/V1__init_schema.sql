@@ -1,4 +1,3 @@
-
 CREATE TABLE users (
     id VARCHAR(36) PRIMARY KEY,
     username VARCHAR(100) NOT NULL UNIQUE,
@@ -18,7 +17,6 @@ CREATE TABLE devices (
     ip_address INET NOT NULL UNIQUE,
     device_type VARCHAR(50) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN',
-
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -44,21 +42,16 @@ CREATE TABLE device_credentials (
 CREATE TABLE device_interfaces (
     device_id BIGINT NOT NULL,
     interface_index INTEGER NOT NULL,
-
     interface_name VARCHAR(150),
     interface_type INTEGER,
     mtu INTEGER,
     speed_bps BIGINT,
-
     admin_status VARCHAR(30),
     oper_status VARCHAR(30),
-
     phys_address VARCHAR(64),
     interface_alias TEXT,
-
     ip_address INET,
     subnet_mask INET,
-
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT pk_device_interfaces
@@ -124,8 +117,6 @@ CREATE TABLE metric_aggregate (
 CREATE TABLE threshold_rules (
     id BIGSERIAL PRIMARY KEY,
     device_id BIGINT NOT NULL,
-    interface_index INTEGER,
-    rule_name VARCHAR(150) NOT NULL,
     metric_type VARCHAR(100) NOT NULL,
     warning_limit DOUBLE PRECISION,
     critical_limit DOUBLE PRECISION,
@@ -134,47 +125,42 @@ CREATE TABLE threshold_rules (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
+    CONSTRAINT uq_threshold_rules_device_metric
+        UNIQUE (device_id, metric_type),
+
     CONSTRAINT fk_threshold_rules_device
         FOREIGN KEY (device_id)
         REFERENCES devices(id)
-        ON DELETE CASCADE,
-
-    CONSTRAINT fk_threshold_rules_interface
-        FOREIGN KEY (device_id, interface_index)
-        REFERENCES device_interfaces(device_id, interface_index)
         ON DELETE CASCADE
 );
 
 CREATE TABLE incidents (
     id BIGSERIAL PRIMARY KEY,
-    device_id BIGINT,
-    threshold_rule_id BIGINT,
+    device_id BIGINT NOT NULL,
+    metric_type VARCHAR(100) NOT NULL,
     severity VARCHAR(20) NOT NULL,
     title VARCHAR(200) NOT NULL,
     description TEXT,
-    status VARCHAR(30) NOT NULL DEFAULT 'OPEN',
-    camunda_process_id VARCHAR(100),
+    peak_value DOUBLE PRECISION NOT NULL,
+    threshold_limit DOUBLE PRECISION NOT NULL,
+    breach_count INTEGER NOT NULL,
+    breach_samples JSONB,
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     resolved_at TIMESTAMPTZ,
 
     CONSTRAINT fk_incidents_device
         FOREIGN KEY (device_id)
         REFERENCES devices(id)
-        ON DELETE SET NULL,
-
-    CONSTRAINT fk_incidents_threshold_rule
-        FOREIGN KEY (threshold_rule_id)
-        REFERENCES threshold_rules(id)
-        ON DELETE SET NULL
+        ON DELETE CASCADE
 );
 
 CREATE TABLE arp_mac_tables (
     id BIGSERIAL PRIMARY KEY,
     device_id BIGINT NOT NULL,
-
     ip_address INET NOT NULL,
     mac_address MACADDR NOT NULL,
-
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_arp_mac_tables_device

@@ -1,17 +1,8 @@
-
--- =============================================
--- DEVICES
--- =============================================
-
 ALTER TABLE devices
 ADD CONSTRAINT chk_devices_status
 CHECK (
     status IN ('UP', 'DOWN', 'UNKNOWN')
 );
-
--- =============================================
--- DEVICE CREDENTIALS
--- =============================================
 
 ALTER TABLE device_credentials
 ADD CONSTRAINT chk_device_credentials_type
@@ -35,11 +26,6 @@ CHECK (
     port IS NULL
     OR port BETWEEN 1 AND 65535
 );
-
-
--- =============================================
--- DEVICE INTERFACES
--- =============================================
 
 ALTER TABLE device_interfaces
 ADD CONSTRAINT chk_device_interfaces_index
@@ -95,11 +81,6 @@ CHECK (
     )
 );
 
-
--- =============================================
--- OID CONFIGS
--- =============================================
-
 ALTER TABLE oid_configs
 ADD CONSTRAINT chk_oid_configs_scope
 CHECK (
@@ -138,20 +119,11 @@ ALTER TABLE oid_configs
 ADD CONSTRAINT chk_oid_configs_kind
 CHECK (oid_kind IN ('SINGLE', 'TABLE_COLUMN'));
 
--- =============================================
--- METRICS
--- =============================================
-
 ALTER TABLE metrics
 ADD CONSTRAINT chk_metrics_data_object
 CHECK (
     jsonb_typeof(metric_data) = 'object'
 );
-
-
--- =============================================
--- METRIC AGGREGATE
--- =============================================
 
 ALTER TABLE metric_aggregate
 ADD CONSTRAINT chk_metric_aggregate_window
@@ -171,11 +143,6 @@ CHECK (
     jsonb_typeof(aggregated_data) = 'object'
 );
 
-
--- =============================================
--- THRESHOLD RULES
--- =============================================
-
 ALTER TABLE threshold_rules
 ADD CONSTRAINT chk_threshold_rules_occurrences
 CHECK (
@@ -187,20 +154,9 @@ ADD CONSTRAINT chk_threshold_rules_limits
 CHECK (
     warning_limit IS NULL
     OR critical_limit IS NULL
-    OR warning_limit < critical_limit
+    OR (metric_type = 'ram_free' AND critical_limit < warning_limit)
+    OR (metric_type <> 'ram_free' AND warning_limit < critical_limit)
 );
-
-ALTER TABLE threshold_rules
-ADD CONSTRAINT chk_threshold_rules_interface_index
-CHECK (
-    interface_index IS NULL
-    OR interface_index > 0
-);
-
-
--- =============================================
--- INCIDENTS
--- =============================================
 
 ALTER TABLE incidents
 ADD CONSTRAINT chk_incidents_severity
@@ -227,4 +183,17 @@ ADD CONSTRAINT chk_incidents_resolved_at
 CHECK (
     resolved_at IS NULL
     OR resolved_at >= created_at
+);
+
+ALTER TABLE incidents
+ADD CONSTRAINT chk_incidents_breach_count
+CHECK (
+    breach_count > 0
+);
+
+ALTER TABLE incidents
+ADD CONSTRAINT chk_incidents_breach_samples_array
+CHECK (
+    breach_samples IS NULL
+    OR jsonb_typeof(breach_samples) = 'array'
 );

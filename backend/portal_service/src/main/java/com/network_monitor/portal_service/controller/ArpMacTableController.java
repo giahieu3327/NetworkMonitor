@@ -1,6 +1,5 @@
 package com.network_monitor.portal_service.controller;
 
-import com.network_monitor.portal_service.model.dto.request.ArpMacTableRequest;
 import com.network_monitor.portal_service.model.dto.request.SearchRequest;
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
 import com.network_monitor.portal_service.model.dto.response.ArpMacTableResponse;

@@ -38,6 +38,11 @@ BEFORE UPDATE ON threshold_rules
 FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER trg_incidents_updated_at
+BEFORE UPDATE ON incidents
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER trg_arp_mac_tables_updated_at
 BEFORE UPDATE ON arp_mac_tables
 FOR EACH ROW

@@ -343,9 +343,10 @@ public class ArpMacTableServiceImpl implements ArpMacTableService {
             String macAddress =
                     toStringValue(data.get("macAddress"));
 
-            if (ipAddress == null || macAddress == null) {
-                continue;
-            }
+        if (ipAddress == null || !isValidMacAddress(macAddress)) {
+        log.warn("Skip invalid ARP entry: deviceId={}, ip={}, mac={}", deviceId, ipAddress, macAddress);
+        continue;
+        }
 
             discoveredIps.add(ipAddress);
 
@@ -519,4 +520,11 @@ public class ArpMacTableServiceImpl implements ArpMacTableService {
                 ? cause.getMessage()
                 : "Đã xảy ra lỗi không xác định";
     }
+
+        private static final java.util.regex.Pattern VALID_MAC_PATTERN =
+                java.util.regex.Pattern.compile("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$");
+
+        private boolean isValidMacAddress(String mac) {
+        return mac != null && VALID_MAC_PATTERN.matcher(mac).matches();
+        }
 }

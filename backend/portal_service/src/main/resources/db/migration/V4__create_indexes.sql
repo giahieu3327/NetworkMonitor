@@ -29,11 +29,11 @@ ON threshold_rules(device_id, is_enabled);
 CREATE INDEX idx_incidents_status_created_at
 ON incidents(status, created_at DESC);
 
-CREATE INDEX idx_incidents_device
-ON incidents(device_id);
+CREATE INDEX idx_incidents_device_metric_status_created
+ON incidents(device_id, metric_type, status, created_at DESC);
 
-CREATE INDEX idx_incidents_threshold_rule
-ON incidents(threshold_rule_id);
+CREATE INDEX idx_incidents_device_created_at
+ON incidents(device_id, created_at DESC);
 
 CREATE INDEX idx_arp_mac_tables_ip
 ON arp_mac_tables(ip_address);

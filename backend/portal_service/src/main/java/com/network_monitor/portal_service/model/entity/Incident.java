@@ -1,8 +1,10 @@
-
 package com.network_monitor.portal_service.model.entity;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 
@@ -20,60 +22,47 @@ public class Incident {
     @Column(name = "id")
     private Long id;
 
-    // Thiết bị liên quan, có thể NULL.
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "device_id")
+    @JoinColumn(name = "device_id", nullable = false)
     private Device device;
 
-    // Quy tắc ngưỡng gây ra incident, có thể NULL.
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "threshold_rule_id")
-    private ThresholdRule thresholdRule;
+    @Column(name = "metric_type", length = 100, nullable = false)
+    private String metricType;
 
-    // INFO, WARNING, CRITICAL.
-    @Column(
-        name = "severity",
-        length = 20,
-        nullable = false
-    )
+    @Column(name = "severity", length = 20, nullable = false)
     private String severity;
 
-    @Column(
-        name = "title",
-        length = 200,
-        nullable = false
-    )
+    @Column(name = "title", length = 200, nullable = false)
     private String title;
 
-    // SQL cho phép NULL.
-    @Column(
-        name = "description",
-        columnDefinition = "text"
-    )
+    @Column(name = "description", columnDefinition = "text")
     private String description;
 
-    // ID tiến trình Camunda.
-    @Column(name = "camunda_process_id", length = 100)
-    private String camundaProcessId;
+    @Column(name = "peak_value", nullable = false)
+    private Double peakValue;
 
-    // OPEN, ACKNOWLEDGED, RESOLVED.
+    @Column(name = "threshold_limit", nullable = false)
+    private Double thresholdLimit;
+
+    @Column(name = "breach_count", nullable = false)
+    private Integer breachCount;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "breach_samples", columnDefinition = "jsonb")
+    private JsonNode breachSamples;
+
     @Builder.Default
-    @Column(
-        name = "status",
-        length = 30,
-        nullable = false
-    )
+    @Column(name = "status", length = 20, nullable = false)
     private String status = "OPEN";
 
     @Builder.Default
-    @Column(
-        name = "created_at",
-        nullable = false,
-        updatable = false
-    )
+    @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
-    // Chỉ có giá trị khi incident được giải quyết.
+    @Builder.Default
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt = OffsetDateTime.now();
+
     @Column(name = "resolved_at")
     private OffsetDateTime resolvedAt;
 }

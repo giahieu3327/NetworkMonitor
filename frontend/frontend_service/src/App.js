@@ -13,7 +13,10 @@ import CreateCredentialPage from './pages/CreateCredential/CreateCredentialPage'
 import CredentialPage from './pages/Credential/CredentialPage';
 import CreateOidConfigPage from './pages/CreateOidConfig/CreateOidConfigPage';
 import OidConfigPage from './pages/OidConfig/OidConfigPage';
+import CreateRulePage from './pages/CreateRule/CreateRulePage';
+import RulePage from './pages/Rule/RulePage';
 import InterfacePage from './pages/Interface/InterfacePage';
+import IncidentPage from './pages/Incident/IncidentPage';
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('access_token');
@@ -88,8 +91,24 @@ function App() {
           element={<OidConfigPage />}
         />
         <Route
+          path="/devices/:deviceId/threshold-rules/create"
+          element={<CreateRulePage />}
+        />
+        <Route
+          path="/threshold-rules/:id"
+          element={<RulePage />}
+        />
+        <Route
           path="/devices/:deviceId/interfaces/:interfaceIndex"
           element={<InterfacePage />}
+        />
+        <Route
+          path="/devices/:deviceId/incidents/:metricType"
+          element={<IncidentPage />}
+        />
+        <Route
+          path="/incidents/:metricType"
+          element={<IncidentPage />}
         />
 
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

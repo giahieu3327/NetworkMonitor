@@ -417,75 +417,68 @@ public class ArpScope {
      * - Hex-STRING: 00 11 22 33 44 55
      * - 00:11:22:33:44:55
      */
-    private String convertMacAddress(Object rawValue) {
+    private static final java.util.regex.Pattern MAC_PATTERN =
+        java.util.regex.Pattern.compile("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$");
 
+    private String convertMacAddress(Object rawValue) {
         if (rawValue == null) {
             return null;
         }
 
         if (rawValue instanceof byte[] bytes) {
-
-            StringBuilder mac = new StringBuilder();
-
-            for (byte b : bytes) {
-
-                if (mac.length() > 0) {
-                    mac.append(":");
-                }
-
-                mac.append(
-                        String.format("%02X", b & 0xFF)
-                );
+            if (bytes.length != 6) {
+                log.warn("Invalid MAC byte length from SNMP: length={}", bytes.length);
+                return null;
             }
-
-            return mac.toString();
+            return formatMacBytes(bytes);
         }
 
-        String value = rawValue.toString().trim();
+        String rawString = rawValue.toString();
 
-        // Bỏ phần mô tả Hex-STRING nếu có.
-        value = value.replaceFirst(
-                "(?i)^Hex-STRING:\\s*",
-                ""
-        );
+        if (rawString.length() == 6) {
+            byte[] asciiBytes = rawString.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+            return formatMacBytes(asciiBytes);
+        }
 
-        // Chuẩn hóa các dấu phân cách thành khoảng trắng.
-        value = value.replaceAll("[:-]", " ");
+        String value = rawString.trim()
+                .replaceFirst("(?i)^Hex-STRING:\\s*", "")
+                .replaceAll("[:-]", " ");
 
-        String[] bytes = value.trim().split("\\s+");
+        String[] parts = value.trim().split("\\s+");
 
-        if (bytes.length != 6) {
+        if (parts.length != 6) {
             log.warn("Invalid MAC value from SNMP: {}", rawValue);
-            return value;
+            return null;
         }
 
         try {
-
-            StringBuilder mac = new StringBuilder();
-
-            for (String b : bytes) {
-
-                int number = Integer.parseInt(b, 16);
-
+            byte[] parsedBytes = new byte[6];
+            for (int i = 0; i < 6; i++) {
+                int number = Integer.parseInt(parts[i], 16);
                 if (number < 0 || number > 255) {
-                    return value;
+                    return null;
                 }
-
-                if (mac.length() > 0) {
-                    mac.append(":");
-                }
-
-                mac.append(
-                        String.format("%02X", number)
-                );
+                parsedBytes[i] = (byte) number;
             }
-
-            return mac.toString();
-
+            String formatted = formatMacBytes(parsedBytes);
+            return MAC_PATTERN.matcher(formatted).matches() ? formatted : null;
         } catch (NumberFormatException e) {
-            return value;
+            log.warn("Cannot parse MAC hex from SNMP: {}", rawValue);
+            return null;
         }
     }
+
+    private String formatMacBytes(byte[] bytes) {
+        StringBuilder mac = new StringBuilder(17);
+        for (int i = 0; i < bytes.length; i++) {
+            if (i > 0) {
+                mac.append(":");
+            }
+            mac.append(String.format("%02X", bytes[i] & 0xFF));
+        }
+        return mac.toString();
+    }
+
 
     private record ArpIndex(
             int interfaceIndex,

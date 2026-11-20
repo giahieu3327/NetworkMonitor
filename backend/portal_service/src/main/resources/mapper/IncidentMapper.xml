@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.network_monitor.portal_service.mapper.IncidentMapper">
+
+    <resultMap id="IncidentResponseResultMap"
+               type="com.network_monitor.portal_service.model.dto.response.IncidentResponse">
+        <id property="id" column="id"/>
+        <result property="deviceId" column="device_id"/>
+        <result property="deviceName" column="device_name"/>
+        <result property="metricType" column="metric_type"/>
+        <result property="severity" column="severity"/>
+        <result property="title" column="title"/>
+        <result property="description" column="description"/>
+        <result property="peakValue" column="peak_value"/>
+        <result property="thresholdLimit" column="threshold_limit"/>
+        <result property="breachCount" column="breach_count"/>
+        <result property="breachSamples" column="breach_samples"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="resolvedAt" column="resolved_at"/>
+    </resultMap>
+
+    <resultMap id="DeviceIncidentMetricSummaryResultMap"
+               type="com.network_monitor.portal_service.model.dto.response.DeviceIncidentMetricSummaryResponse">
+        <result property="metricType" column="metric_type"/>
+        <result property="totalWarning" column="total_warning"/>
+        <result property="totalCritical" column="total_critical"/>
+        <result property="maxPeakValue" column="max_peak_value"/>
+        <result property="minPeakValue" column="min_peak_value"/>
+        <result property="avgPeakValue" column="avg_peak_value"/>
+    </resultMap>
+
+    <sql id="IncidentColumns">
+        i.id,
+        i.device_id,
+        d.device_name,
+        i.metric_type,
+        i.severity,
+        i.title,
+        i.description,
+        i.peak_value,
+        i.threshold_limit,
+        i.breach_count,
+        CAST(i.breach_samples AS TEXT) AS breach_samples,
+        i.status,
+        i.created_at,
+        i.updated_at,
+        i.resolved_at
+    </sql>
+
+    <sql id="IncidentFilterCondition">
+        LOWER(i.metric_type) = #{metricType}
+        AND i.created_at &gt;= #{start}
+        AND i.created_at &lt; #{end}
+        <if test="deviceId != null">
+            AND i.device_id = #{deviceId}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (
+                d.device_name ILIKE CONCAT('%', #{keyword}, '%')
+                OR i.severity ILIKE CONCAT('%', #{keyword}, '%')
+                OR i.title ILIKE CONCAT('%', #{keyword}, '%')
+                OR i.description ILIKE CONCAT('%', #{keyword}, '%')
+                OR i.status ILIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <sql id="IncidentOrderBy">
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'id'">
+                i.id
+            </when>
+            <when test="sortBy == 'deviceName'">
+                d.device_name
+            </when>
+            <when test="sortBy == 'severity'">
+                i.severity
+            </when>
+            <when test="sortBy == 'title'">
+                i.title
+            </when>
+            <when test="sortBy == 'peakValue'">
+                i.peak_value
+            </when>
+            <when test="sortBy == 'thresholdLimit'">
+                i.threshold_limit
+            </when>
+            <when test="sortBy == 'breachCount'">
+                i.breach_count
+            </when>
+            <when test="sortBy == 'status'">
+                i.status
+            </when>
+            <when test="sortBy == 'updatedAt'">
+                i.updated_at
+            </when>
+            <when test="sortBy == 'resolvedAt'">
+                i.resolved_at
+            </when>
+            <when test="sortBy == 'createdAt'">
+                i.created_at
+            </when>
+            <otherwise>
+                i.created_at
+            </otherwise>
+        </choose>
+        <choose>
+            <when test="direction == 'ASC'">
+                ASC
+            </when>
+            <otherwise>
+                DESC
+            </otherwise>
+        </choose>
+        , i.id DESC
+    </sql>
+
+    <select id="searchIncidentsByMetricType"
+            resultMap="IncidentResponseResultMap">
+        SELECT
+        <include refid="IncidentColumns"/>
+        FROM incidents i
+        INNER JOIN devices d
+            ON d.id = i.device_id
+        <where>
+            <include refid="IncidentFilterCondition"/>
+        </where>
+        <include refid="IncidentOrderBy"/>
+        LIMIT #{pageSize}
+        OFFSET #{offset}
+    </select>
+
+    <select id="countIncidentsByMetricType"
+            resultType="long">
+        SELECT COUNT(*)
+        FROM incidents i
+        INNER JOIN devices d
+            ON d.id = i.device_id
+        <where>
+            <include refid="IncidentFilterCondition"/>
+        </where>
+    </select>
+
+    <sql id="DeviceMetricSummaryFilterCondition">
+        i.device_id = #{deviceId}
+        AND i.created_at &gt;= #{start}
+        AND i.created_at &lt; #{end}
+        <if test="keyword != null and keyword != ''">
+            AND i.metric_type ILIKE CONCAT('%', #{keyword}, '%')
+        </if>
+    </sql>
+
+    <sql id="DeviceMetricSummaryOrderBy">
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'totalWarning'">
+                total_warning
+            </when>
+            <when test="sortBy == 'totalCritical'">
+                total_critical
+            </when>
+            <when test="sortBy == 'maxPeakValue'">
+                max_peak_value
+            </when>
+            <when test="sortBy == 'minPeakValue'">
+                min_peak_value
+            </when>
+            <when test="sortBy == 'avgPeakValue'">
+                avg_peak_value
+            </when>
+            <when test="sortBy == 'metricType'">
+                i.metric_type
+            </when>
+            <otherwise>
+                i.metric_type
+            </otherwise>
+        </choose>
+        <choose>
+            <when test="direction == 'DESC'">
+                DESC
+            </when>
+            <otherwise>
+                ASC
+            </otherwise>
+        </choose>
+        , i.metric_type ASC
+    </sql>
+
+    <select id="summarizeIncidentsByDevice"
+            resultMap="DeviceIncidentMetricSummaryResultMap">
+        SELECT
+            i.metric_type AS metric_type,
+            COALESCE(SUM(CASE WHEN i.severity = 'WARNING' THEN 1 ELSE 0 END), 0) AS total_warning,
+            COALESCE(SUM(CASE WHEN i.severity = 'CRITICAL' THEN 1 ELSE 0 END), 0) AS total_critical,
+            MAX(i.peak_value) AS max_peak_value,
+            MIN(i.peak_value) AS min_peak_value,
+            AVG(i.peak_value) AS avg_peak_value
+        FROM incidents i
+        <where>
+            <include refid="DeviceMetricSummaryFilterCondition"/>
+        </where>
+        GROUP BY i.metric_type
+        <include refid="DeviceMetricSummaryOrderBy"/>
+        LIMIT #{pageSize}
+        OFFSET #{offset}
+    </select>
+
+    <select id="countIncidentMetricsByDevice"
+            resultType="long">
+        SELECT COUNT(DISTINCT i.metric_type)
+        FROM incidents i
+        <where>
+            <include refid="DeviceMetricSummaryFilterCondition"/>
+        </where>
+    </select>
+
+</mapper>
