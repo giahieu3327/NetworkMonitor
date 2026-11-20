@@ -1,8 +1,22 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import RegisterPage from './pages/RegisterPage';
+import LoginPage from './pages/Login/LoginPage';
+import DashboardPage from './pages/Dashboard/DashboardPage';
+import RegisterPage from './pages/Register/RegisterPage';
+import VerifyEmailPage from './pages/VerifyEmail/VerifyEmailPage';
+import ForgotPwdPage from './pages/ForgotPassword/ForgotPwdPage';
+import HomePage from './pages/Home/HomePage';
+import UserPage from './pages/User/UserPage';
+import CreateDevicePage from './pages/CreateDevice/CreateDevicePage';
+import DevicePage from './pages/Device/DevicePage';
+import CreateCredentialPage from './pages/CreateCredential/CreateCredentialPage';
+import CredentialPage from './pages/Credential/CredentialPage';
+import CreateOidConfigPage from './pages/CreateOidConfig/CreateOidConfigPage';
+import OidConfigPage from './pages/OidConfig/OidConfigPage';
+import CreateRulePage from './pages/CreateRule/CreateRulePage';
+import RulePage from './pages/Rule/RulePage';
+import InterfacePage from './pages/Interface/InterfacePage';
+import IncidentPage from './pages/Incident/IncidentPage';
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('access_token');
@@ -17,6 +31,9 @@ function App() {
     <Router>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPwdPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+
         <Route
           path="/dashboard"
           element={
@@ -33,6 +50,68 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/home"
+          element={
+            <ProtectedRoute>
+              <HomePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/users/:id"
+          element={
+            <ProtectedRoute>
+              <UserPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/devices/create"
+          element={<CreateDevicePage />}
+        />
+        <Route
+          path="/devices/:deviceId"
+          element={<DevicePage />}
+        />
+        <Route
+          path="/devices/:deviceId/credentials/create"
+          element={<CreateCredentialPage />}
+        />
+        <Route
+          path="/credentials/:id"
+          element={<CredentialPage />}
+        />
+        <Route
+          path="/devices/:deviceId/oid-configs/create"
+          element={<CreateOidConfigPage />}
+        />
+        <Route
+          path="/oid-configs/:id"
+          element={<OidConfigPage />}
+        />
+        <Route
+          path="/devices/:deviceId/threshold-rules/create"
+          element={<CreateRulePage />}
+        />
+        <Route
+          path="/threshold-rules/:id"
+          element={<RulePage />}
+        />
+        <Route
+          path="/devices/:deviceId/interfaces/:interfaceIndex"
+          element={<InterfacePage />}
+        />
+        <Route
+          path="/devices/:deviceId/incidents/:metricType"
+          element={<IncidentPage />}
+        />
+        <Route
+          path="/incidents/:metricType"
+          element={<IncidentPage />}
+        />
+
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Router>

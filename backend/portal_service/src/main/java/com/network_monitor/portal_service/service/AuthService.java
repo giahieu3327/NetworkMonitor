@@ -1,94 +1,59 @@
+
 package com.network_monitor.portal_service.service;
 
-import com.network_monitor.portal_service.model.dto.*;
-import com.network_monitor.portal_service.model.entity.User;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import com.network_monitor.portal_service.model.dto.request.ForgotPasswordRequest;
+import com.network_monitor.portal_service.model.dto.request.LoginRequest;
+import com.network_monitor.portal_service.model.dto.request.LogoutRequest;
+import com.network_monitor.portal_service.model.dto.request.RefreshRequest;
+import com.network_monitor.portal_service.model.dto.request.RegisterRequest;
+import com.network_monitor.portal_service.model.dto.request.ResetPasswordRequest;
+import com.network_monitor.portal_service.model.dto.request.SendVerificationEmailRequest;
+import com.network_monitor.portal_service.model.dto.request.VerifyEmailRequest;
+import com.network_monitor.portal_service.model.dto.request.VerifyResetPasswordOtpRequest;
+import com.network_monitor.portal_service.model.dto.response.ApiResponse;
+import com.network_monitor.portal_service.model.dto.response.TokenResponse;
 
-import java.util.List;
+import org.springframework.web.multipart.MultipartFile;
 
-@Service
-@RequiredArgsConstructor
-@Slf4j
-public class AuthService {
+import java.io.IOException;
+import java.util.Map;
 
-    private final KeyCloakService keyCloakService;
-    private final UserService userService;
+public interface AuthService {
 
-    private static final String ROOT_ADMIN_USERNAME = "admin";
-    private static final String ROLE_SUPER_ADMIN = "ROLE_SUPER_ADMIN";
+    // Registration
+    ApiResponse<Void> register(RegisterRequest request);
 
-    @Transactional
-    public User register(RegisterRequest request, String currentUsername) {
-        if (userService.existsByUsername(request.getUsername()) || keyCloakService.existsByUsername(request.getUsername())) {
-            throw new IllegalArgumentException("Username '" + request.getUsername() + "' đã tồn tại trong hệ thống!");
-        }
+    // Excel import
+    ApiResponse<Map<String, Object>> importUsersFromExcel(
+            MultipartFile file
+    );
 
-        String targetRole = request.getRole().trim();
-        if (ROLE_SUPER_ADMIN.equalsIgnoreCase(targetRole)) {
-            if (!ROOT_ADMIN_USERNAME.equalsIgnoreCase(currentUsername)) {
-                throw new AccessDeniedException("Chỉ duy nhất tài khoản Admin tối cao (username: admin) mới có quyền gán ROLE_SUPER_ADMIN!");
-            }
-        }
+    // Excel export
+    byte[] exportUsers() throws IOException;
 
-        String keycloakId = keyCloakService.createAndConfigureUser(
-                request.getUsername(),
-                request.getEmail(),
-                request.getFullName(),
-                request.getPassword(),
-                targetRole
-        );
+    // Download Excel import template
+    byte[] downloadUserImportTemplate() throws IOException;
 
-        return userService.createLocalUser(
-                keycloakId,
-                request.getUsername(),
-                request.getEmail(),
-                request.getFullName(),
-                request.getPhoneNumber()
-        );
-    }
+    // Authentication
+    ApiResponse<TokenResponse> login(LoginRequest request);
 
-    public TokenResponse login(LoginRequest request) {
-        return keyCloakService.login(request.getUsername(), request.getPassword());
-    }
+    ApiResponse<TokenResponse> refresh(RefreshRequest request);
 
-    public TokenResponse refreshToken(RefreshTokenRequest request) {
-        return keyCloakService.refreshToken(request.getRefreshToken());
-    }
+    ApiResponse<Void> logout(LogoutRequest request);
 
-    public void logout(LogoutRequest request) {
-        keyCloakService.logout(request.getRefreshToken());
-    }
+    // Password recovery
+    ApiResponse<Void> forgotPassword(ForgotPasswordRequest request);
 
-    public UserProfileResponse getMe(org.springframework.security.oauth2.jwt.Jwt jwt) {
-        String userId = jwt.getSubject(); // Claim 'sub' chính là Keycloak UUID / Postgres User ID
+    ApiResponse<String> verifyResetPasswordOtp(
+            VerifyResetPasswordOtpRequest request
+    );
 
-        List<String> roles = java.util.Collections.emptyList();
-        java.util.Map<String, Object> realmAccess = jwt.getClaim("realm_access");
-        if (realmAccess != null && realmAccess.containsKey("roles")) {
-            @SuppressWarnings("unchecked")
-            List<String> realmRoles = (List<String>) realmAccess.get("roles");
-            
-            // Chỉ lấy những role bắt đầu bằng tiền tố "ROLE_"
-            roles = realmRoles.stream()
-                    .filter(role -> role != null && role.startsWith("ROLE_"))
-                    .collect(java.util.stream.Collectors.toList());
-        }
+    ApiResponse<Void> resetPassword(ResetPasswordRequest request);
 
-        return userService.getCurrentUserProfile(userId, roles);
-    }
+    // Email verification
+    ApiResponse<Void> sendVerificationEmail(
+            SendVerificationEmailRequest request
+    );
 
-    public void changePassword(org.springframework.security.oauth2.jwt.Jwt jwt, com.network_monitor.portal_service.model.dto.ChangePasswordRequest request) {
-        String userId = jwt.getSubject();
-        String username = jwt.getClaimAsString("preferred_username");
-
-        if (username == null) {
-            username = jwt.getClaimAsString("sub");
-        }
-
-        keyCloakService.changePassword(userId, username, request.getCurrentPassword(), request.getNewPassword());
-    }
+    ApiResponse<String> verifyEmail(VerifyEmailRequest request);
 }

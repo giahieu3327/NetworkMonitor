@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.network_monitor.portal_service.mapper.MetricHistoryMapper">
+
+    <!-- CPU history: 15 phút gần nhất -->
+    <select id="findCpuHistory"
+            resultType="com.network_monitor.portal_service.model.dto.response.MetricHistoryRow">
+
+        SELECT
+            id,
+            device_id AS "deviceId",
+            CAST(metric_data -> 'cpu_usage' AS TEXT) AS "metricValueJson",
+            timestamp
+        FROM metrics
+        WHERE device_id = #{deviceId}
+          AND timestamp >= CURRENT_TIMESTAMP - INTERVAL '15 minutes'
+          AND timestamp &lt;= CURRENT_TIMESTAMP
+          AND metric_data -> 'cpu_usage' IS NOT NULL
+          AND metric_data -> 'cpu_usage' != 'null'::jsonb
+        ORDER BY timestamp ASC, id ASC
+
+    </select>
+
+    <!-- RAM history: 15 phút gần nhất -->
+    <select id="findRamHistory"
+            resultType="com.network_monitor.portal_service.model.dto.response.MetricHistoryRow">
+
+        SELECT
+            id,
+            device_id AS "deviceId",
+            CAST(metric_data -> 'ram_usage_percent' AS TEXT) AS "metricValueJson",
+            timestamp
+        FROM metrics
+        WHERE device_id = #{deviceId}
+          AND timestamp >= CURRENT_TIMESTAMP - INTERVAL '15 minutes'
+          AND timestamp &lt;= CURRENT_TIMESTAMP
+          AND metric_data -> 'ram_usage_percent' IS NOT NULL
+          AND metric_data -> 'ram_usage_percent' != 'null'::jsonb
+        ORDER BY timestamp ASC, id ASC
+
+    </select>
+
+</mapper>

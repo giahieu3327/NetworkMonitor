@@ -1,32 +1,75 @@
 package com.network_monitor.portal_service.repository;
 
 import com.network_monitor.portal_service.model.entity.Incident;
-import com.network_monitor.portal_service.model.enums.IncidentSeverity;
-import com.network_monitor.portal_service.model.enums.IncidentStatus;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface IncidentRepository extends JpaRepository<Incident, Long> {
 
-    List<Incident> findByDeviceIdAndStatus(Long deviceId, IncidentStatus status);
+    Optional<Incident> findFirstByDeviceIdAndMetricTypeAndStatusOrderByCreatedAtDesc(
+            Long deviceId,
+            String metricType,
+            String status
+    );
 
-    Optional<Incident> findByDeviceIdAndThresholdRuleIdAndStatus(Long deviceId, Long ruleId, IncidentStatus status);
+    List<Incident> findByMetricTypeOrderByCreatedAtDesc(String metricType);
 
-    @Query("SELECT i FROM Incident i WHERE " +
-           "(:deviceId IS NULL OR i.device.id = :deviceId) AND " +
-           "(:status IS NULL OR i.status = :status) AND " +
-           "(:severity IS NULL OR i.severity = :severity)")
-    Page<Incident> filterIncidents(
-            @Param("deviceId") Long deviceId,
-            @Param("status") IncidentStatus status,
-            @Param("severity") IncidentSeverity severity,
-            Pageable pageable);
+    List<Incident> findByDeviceIdAndMetricTypeOrderByCreatedAtDesc(
+            Long deviceId,
+            String metricType
+    );
+
+    List<Incident> findByStatusOrderByCreatedAtDesc(String status);
+
+    List<Incident> findByCreatedAtBetweenOrderByCreatedAtDesc(
+            OffsetDateTime start,
+            OffsetDateTime end
+    );
+
+    @Query("""
+        SELECT
+            i.metricType,
+            SUM(CASE WHEN i.severity = 'WARNING' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN i.severity = 'CRITICAL' THEN 1 ELSE 0 END),
+            MAX(i.peakValue),
+            MIN(i.peakValue),
+            AVG(i.peakValue)
+        FROM Incident i
+        WHERE i.device.id = :deviceId
+        GROUP BY i.metricType
+        ORDER BY i.metricType ASC
+        """)
+    List<Object[]> summarizeByDeviceGroupByMetric(@Param("deviceId") Long deviceId);
+
+    @Query("""
+        SELECT
+            d.id,
+            d.deviceName,
+            i.metricType,
+            COUNT(i.id),
+            SUM(CASE WHEN i.severity = 'WARNING' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN i.severity = 'CRITICAL' THEN 1 ELSE 0 END),
+            MAX(i.peakValue)
+        FROM Incident i
+        JOIN i.device d
+        WHERE i.createdAt >= :start AND i.createdAt < :end
+        GROUP BY
+            d.id,
+            d.deviceName,
+            i.metricType
+        ORDER BY COUNT(i.id) DESC
+        """)
+    List<Object[]> summarizeIncidentsBetween(
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end
+    );
+
+    List<Incident> findAllByStatusAndCreatedAtBefore(String status, OffsetDateTime threshold);
 }

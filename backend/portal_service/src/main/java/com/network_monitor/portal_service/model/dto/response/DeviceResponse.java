@@ -1,0 +1,24 @@
+
+package com.network_monitor.portal_service.model.dto.response;
+
+import lombok.*;
+
+import java.time.OffsetDateTime;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class DeviceResponse {
+
+    private Long id;
+
+    private String deviceName;
+    private String ipAddress;
+    private String deviceType;
+
+    private String status;
+
+    private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;
+}

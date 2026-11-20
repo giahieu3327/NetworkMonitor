@@ -1,0 +1,310 @@
+.iface-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.iface-page.light-mode {
+  background-color: var(--bg-light);
+  color: var(--text-primary-light);
+}
+
+.iface-page.dark-mode {
+  background-color: var(--bg-dark);
+  color: var(--text-primary-dark);
+}
+
+.iface-header {
+  height: 72px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid;
+  box-sizing: border-box;
+}
+
+.light-mode .iface-header {
+  background-color: var(--card-bg-light);
+  border-color: var(--border-light);
+}
+
+.dark-mode .iface-header {
+  background-color: var(--card-bg-dark);
+  border-color: var(--border-dark);
+}
+
+.iface-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.iface-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: -0.3px;
+}
+
+.iface-back-button {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.light-mode .iface-back-button {
+  background-color: #e2e8f0;
+  color: var(--text-primary-light);
+}
+
+.dark-mode .iface-back-button {
+  background-color: #1e293b;
+  color: var(--text-primary-dark);
+}
+
+.iface-back-button:hover {
+  opacity: 0.85;
+}
+
+.iface-main {
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 36px 20px;
+  box-sizing: border-box;
+}
+
+.iface-card {
+  padding: 36px 32px;
+  border-radius: 20px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: all 0.3s ease;
+}
+
+.light-mode .iface-card {
+  background-color: var(--card-bg-light);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.08);
+}
+
+.dark-mode .iface-card {
+  background-color: var(--card-bg-dark);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.iface-card-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding-bottom: 24px;
+  margin-bottom: 28px;
+  border-bottom: 1px solid;
+}
+
+.light-mode .iface-card-header {
+  border-color: var(--border-light);
+}
+
+.dark-mode .iface-card-header {
+  border-color: var(--border-dark);
+}
+
+.iface-avatar {
+  width: 68px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 20px;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 700;
+  box-shadow: 0 10px 20px -5px var(--primary-glow);
+}
+
+.iface-header-info h3 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.iface-header-info p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.light-mode .iface-header-info p {
+  color: var(--text-secondary-light);
+}
+
+.dark-mode .iface-header-info p {
+  color: var(--text-secondary-dark);
+}
+
+.iface-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.iface-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.iface-field label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.light-mode .iface-field label {
+  color: var(--text-primary-light);
+}
+
+.dark-mode .iface-field label {
+  color: var(--text-primary-dark);
+}
+
+.iface-input-box {
+  width: 100%;
+  height: 46px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  box-sizing: border-box;
+  outline: none;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.light-mode .iface-input-box {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: var(--text-primary-light);
+}
+
+.dark-mode .iface-input-box {
+  background-color: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary-dark);
+}
+
+.iface-input-box:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.iface-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 46px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.iface-status-badge.up {
+  background-color: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.iface-status-badge.down {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.iface-status-badge.unknown {
+  background-color: rgba(148, 163, 184, 0.15);
+  color: #64748b;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.iface-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid;
+}
+
+.light-mode .iface-actions {
+  border-color: var(--border-light);
+}
+
+.dark-mode .iface-actions {
+  border-color: var(--border-dark);
+}
+
+.iface-cancel-btn {
+  height: 42px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.light-mode .iface-cancel-btn {
+  background-color: #e2e8f0;
+  color: var(--text-primary-light);
+}
+
+.dark-mode .iface-cancel-btn {
+  background-color: #1e293b;
+  color: var(--text-primary-dark);
+}
+
+.iface-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.iface-alert.error {
+  color: #dc2626;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.dark-mode .iface-alert.error {
+  color: #fca5a5;
+  background-color: rgba(127, 29, 29, 0.25);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+@media (max-width: 640px) {
+  .iface-grid {
+    grid-template-columns: 1fr;
+  }
+}

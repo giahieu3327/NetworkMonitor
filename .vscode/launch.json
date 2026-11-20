@@ -1,0 +1,12 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Debug NetworkMonitor",
+            "request": "launch",
+            "mainClass": "com.network_monitor.portal_service.PortalServiceApplication",
+            "projectName": "portal_service"
+        }
+    ]
+}

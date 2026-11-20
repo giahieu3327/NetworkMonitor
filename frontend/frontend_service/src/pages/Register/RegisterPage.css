@@ -1,0 +1,232 @@
+.register-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.register-page.light-mode {
+  background-color: var(--bg-light);
+  color: var(--text-primary-light);
+}
+
+.register-page.dark-mode {
+  background-color: var(--bg-dark);
+  color: var(--text-primary-dark);
+}
+
+.register-card {
+  width: 100%;
+  max-width: 620px;
+  padding: 36px 32px;
+  border-radius: 20px;
+  box-sizing: border-box;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: all 0.3s ease;
+}
+
+.light-mode .register-card {
+  background-color: var(--card-bg-light);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.08);
+}
+
+.dark-mode .register-card {
+  background-color: var(--card-bg-dark);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.register-title {
+  margin: 0 0 24px;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--primary);
+  letter-spacing: -0.3px;
+}
+
+.register-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.light-mode .form-group label {
+  color: var(--text-primary-light);
+}
+
+.dark-mode .form-group label {
+  color: var(--text-primary-dark);
+}
+
+/* Custom Role Select */
+.role-select {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid;
+  outline: none;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.light-mode .role-select {
+  background-color: var(--input-bg-light);
+  color: var(--text-primary-light);
+  border-color: var(--border-light);
+}
+
+.dark-mode .role-select {
+  background-color: var(--input-bg-dark);
+  color: var(--text-primary-dark);
+  border-color: var(--border-dark);
+}
+
+.role-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+/* Checkbox Styling */
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 13.5px;
+}
+
+.checkbox-group input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.checkbox-group label {
+  cursor: pointer;
+  user-select: none;
+}
+
+.register-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid;
+}
+
+.light-mode .register-actions {
+  border-color: var(--border-light);
+}
+
+.dark-mode .register-actions {
+  border-color: var(--border-dark);
+}
+
+.cancel-btn,
+.submit-btn {
+  height: 44px;
+  padding: 0 24px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cancel-btn {
+  background-color: #64748b;
+  color: #ffffff;
+}
+
+.cancel-btn:hover:not(:disabled) {
+  background-color: #475569;
+}
+
+.submit-btn {
+  background-color: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 8px 16px -4px var(--primary-glow);
+}
+
+.submit-btn:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.cancel-btn:disabled,
+.submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.register-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.light-mode .register-alert.error {
+  color: #dc2626;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.dark-mode .register-alert.error {
+  color: #fca5a5;
+  background-color: rgba(127, 29, 29, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+@media (max-width: 640px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .register-actions {
+    flex-direction: column-reverse;
+  }
+
+  .cancel-btn,
+  .submit-btn {
+    width: 100%;
+  }
+}

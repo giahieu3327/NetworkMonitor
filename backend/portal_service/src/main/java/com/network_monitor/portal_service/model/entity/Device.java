@@ -1,56 +1,69 @@
+
 package com.network_monitor.portal_service.model.entity;
 
-import com.network_monitor.portal_service.model.enums.DeviceStatus;
-import com.network_monitor.portal_service.model.enums.DeviceType;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.ColumnTransformer;
 
 import java.time.OffsetDateTime;
-import java.util.List;
 
 @Entity
 @Table(name = "devices")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Device {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "device_name", length = 100, nullable = false)
+    @Column(name = "device_name", length = 150, nullable = false, unique = true)
     private String deviceName;
 
-    @Column(name = "ip_address", length = 45, nullable = false, unique = true)
+    // PostgreSQL INET
+    @ColumnTransformer(
+            read = "host(ip_address)",
+            write = "?::inet"
+    )
+    @Column(name = "ip_address", columnDefinition = "inet",
+            nullable = false, unique = true)
     private String ipAddress;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "device_type", length = 30, nullable = false)
-    private DeviceType deviceType;
+    // ROUTER, SWITCH, FIREWALL...
+    @Column(name = "device_type", length = 50, nullable = false)
+    private String deviceType;
 
-    @Column(length = 100)
-    private String model;
-
-    @Column(name = "firmware_version", length = 50)
-    private String firmwareVersion;
-
+    // UP, DOWN, UNKNOWN
     @Builder.Default
-    @Enumerated(EnumType.STRING)
-    @Column(length = 20)
-    private DeviceStatus status = DeviceStatus.UP;
+    @Column(name = "status", length = 20, nullable = false)
+    private String status = "UNKNOWN";
 
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    @UpdateTimestamp
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
-    @OneToMany(mappedBy = "device", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<DeviceCredential> credentials;
+    @PrePersist
+    protected void onCreate() {
+        OffsetDateTime now = OffsetDateTime.now();
 
-    @OneToMany(mappedBy = "device", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<DeviceInterface> interfaces;
+        if (createdAt == null) {
+            createdAt = now;
+        }
+
+        updatedAt = now;
+
+        if (status == null) {
+            status = "UNKNOWN";
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = OffsetDateTime.now();
+    }
 }

@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.network_monitor.portal_service.mapper.ArpMacTableMapper">
+
+    <!-- ==================== RESULT MAP ==================== -->
+
+    <resultMap id="ArpMacTableResultMap"
+               type="com.network_monitor.portal_service.model.entity.ArpMacTable">
+
+        <id property="id" column="id"/>
+
+        <result property="ipAddress" column="ip_address"/>
+
+        <result property="macAddress" column="mac_address"/>
+
+        <result property="updatedAt" column="updated_at"/>
+
+        <association property="device"
+                     javaType="com.network_monitor.portal_service.model.entity.Device">
+
+            <id property="id" column="device_id"/>
+
+            <result property="deviceName" column="device_name"/>
+
+        </association>
+
+    </resultMap>
+
+
+    <!-- ==================== REUSABLE COLUMNS ==================== -->
+
+    <sql id="ArpColumns">
+
+        arp.id,
+        arp.device_id,
+        d.device_name,
+        HOST(arp.ip_address) AS ip_address,
+        CAST(arp.mac_address AS TEXT) AS mac_address,
+        arp.updated_at
+
+    </sql>
+
+
+    <!-- ==================== REUSABLE KEYWORD ==================== -->
+
+    <sql id="ArpKeywordCondition">
+
+        <if test="keyword != null and keyword != ''">
+
+            AND (
+
+                CAST(arp.ip_address AS TEXT)
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+                OR CAST(arp.mac_address AS TEXT)
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+            )
+
+        </if>
+
+    </sql>
+
+
+    <!-- ==================== REUSABLE ORDER BY ==================== -->
+
+    <sql id="ArpOrderBy">
+
+        ORDER BY
+
+        <choose>
+
+            <when test="sortBy == 'id'">
+                arp.id
+            </when>
+
+            <when test="sortBy == 'ipAddress'">
+                arp.ip_address
+            </when>
+
+            <when test="sortBy == 'macAddress'">
+                arp.mac_address
+            </when>
+
+            <when test="sortBy == 'updatedAt'">
+                arp.updated_at
+            </when>
+
+            <otherwise>
+                arp.updated_at
+            </otherwise>
+
+        </choose>
+
+        <choose>
+
+            <when test="direction == 'ASC'">
+                ASC
+            </when>
+
+            <otherwise>
+                DESC
+            </otherwise>
+
+        </choose>
+
+        , arp.id ASC
+
+    </sql>
+
+
+    <!-- ====================================================== -->
+    <!-- GET ALL ARP RECORDS BY DEVICE ID                       -->
+    <!-- ====================================================== -->
+
+    <select id="searchByDeviceId"
+            resultMap="ArpMacTableResultMap">
+
+        SELECT
+
+        <include refid="ArpColumns"/>
+
+        FROM arp_mac_tables arp
+
+        INNER JOIN devices d
+            ON d.id = arp.device_id
+
+        <where>
+
+            arp.device_id = #{deviceId}
+
+            <include refid="ArpKeywordCondition"/>
+
+        </where>
+
+        <include refid="ArpOrderBy"/>
+
+        LIMIT #{pageSize}
+
+        OFFSET #{offset}
+
+    </select>
+
+
+    <!-- COUNT ARP RECORDS BY DEVICE ID -->
+
+    <select id="countByDeviceId"
+            resultType="long">
+
+        SELECT COUNT(*)
+
+        FROM arp_mac_tables arp
+
+        INNER JOIN devices d
+            ON d.id = arp.device_id
+
+        <where>
+
+            arp.device_id = #{deviceId}
+
+            <include refid="ArpKeywordCondition"/>
+
+        </where>
+
+    </select>
+
+</mapper>

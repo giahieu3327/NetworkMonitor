@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.network_monitor.portal_service.mapper.ThresholdRuleMapper">
+
+    <resultMap id="ThresholdRuleResultMap" type="com.network_monitor.portal_service.model.entity.ThresholdRule">
+        <id property="id" column="id"/>
+        <result property="metricType" column="metric_type"/>
+        <result property="warningLimit" column="warning_limit"/>
+        <result property="criticalLimit" column="critical_limit"/>
+        <result property="consecutiveOccurrences" column="consecutive_occurrences"/>
+        <result property="isEnabled" column="is_enabled"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+
+        <association property="device" javaType="com.network_monitor.portal_service.model.entity.Device">
+            <id property="id" column="device_id"/>
+            <result property="deviceName" column="device_name"/>
+        </association>
+    </resultMap>
+
+    <sql id="ThresholdRuleWhereClause">
+        <where>
+            tr.device_id = #{deviceId}
+            <if test="keyword != null and keyword != ''">
+                AND LOWER(tr.metric_type) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+            </if>
+        </where>
+    </sql>
+
+    <select id="findByDeviceId" resultMap="ThresholdRuleResultMap">
+        SELECT
+            tr.id,
+            tr.device_id,
+            d.device_name,
+            tr.metric_type,
+            tr.warning_limit,
+            tr.critical_limit,
+            tr.consecutive_occurrences,
+            tr.is_enabled,
+            tr.created_at,
+            tr.updated_at
+        FROM threshold_rules tr
+        INNER JOIN devices d ON d.id = tr.device_id
+        <include refid="ThresholdRuleWhereClause"/>
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'id'">tr.id</when>
+            <when test="sortBy == 'metricType'">tr.metric_type</when>
+            <when test="sortBy == 'warningLimit'">tr.warning_limit</when>
+            <when test="sortBy == 'criticalLimit'">tr.critical_limit</when>
+            <when test="sortBy == 'consecutiveOccurrences'">tr.consecutive_occurrences</when>
+            <when test="sortBy == 'isEnabled'">tr.is_enabled</when>
+            <when test="sortBy == 'updatedAt'">tr.updated_at</when>
+            <otherwise>tr.created_at</otherwise>
+        </choose>
+        <choose>
+            <when test="direction != null and direction.equalsIgnoreCase('ASC')">ASC</when>
+            <otherwise>DESC</otherwise>
+        </choose>
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByDeviceId" resultType="long">
+        SELECT COUNT(*)
+        FROM threshold_rules tr
+        <include refid="ThresholdRuleWhereClause"/>
+    </select>
+
+</mapper>

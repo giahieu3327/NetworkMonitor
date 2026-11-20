@@ -2,40 +2,65 @@ package com.network_monitor.portal_service.model.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.ColumnTransformer;
 
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "arp_mac_tables")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Table(
+    name = "arp_mac_tables",
+    uniqueConstraints = {
+        @UniqueConstraint(
+            name = "uq_arp_mac_tables_device_ip",
+            columnNames = {"device_id", "ip_address"}
+        )
+    },
+    indexes = {
+        @Index(name = "idx_arp_mac_tables_ip", columnList = "ip_address"),
+        @Index(name = "idx_arp_mac_tables_mac", columnList = "mac_address")
+    }
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class ArpMacTable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
-    @Column(name = "ip_address", length = 45, nullable = false)
+    // PostgreSQL INET.
+    @ColumnTransformer(
+        read = "host(ip_address)",
+        write = "?::inet"
+    )
+    @Column(
+        name = "ip_address",
+        columnDefinition = "inet",
+        nullable = false
+    )
     private String ipAddress;
 
-    @Column(name = "mac_address", length = 17, nullable = false)
+    // PostgreSQL MACADDR.
+    @ColumnTransformer(
+        read = "mac_address::text",
+        write = "?::macaddr"
+    )
+    @Column(
+        name = "mac_address",
+        columnDefinition = "macaddr",
+        nullable = false
+    )
     private String macAddress;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "device_id", nullable = false)
     private Device device;
 
-    @Column(name = "interface_name", length = 50, nullable = false)
-    private String interfaceName;
-
-    @Column(name = "vlan_id")
-    private Integer vlanId;
-
     @Builder.Default
-    @Column(name = "last_seen")
-    private OffsetDateTime lastSeen = OffsetDateTime.now();
-
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private OffsetDateTime updatedAt;
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt = OffsetDateTime.now();
 }

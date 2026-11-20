@@ -1,25 +1,24 @@
 package com.network_monitor.portal_service.repository;
 
 import com.network_monitor.portal_service.model.entity.ArpMacTable;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 
-import java.util.Optional;
+import java.util.List;
 
-@Repository
-public interface ArpMacTableRepository extends JpaRepository<ArpMacTable, Long> {
+public interface ArpMacTableRepository
+        extends JpaRepository<ArpMacTable, Long> {
 
-    Optional<ArpMacTable> findByIpAddressAndDeviceId(String ipAddress, Long deviceId);
+    List<ArpMacTable> findAllByDevice_Id(Long deviceId);
 
-    Optional<ArpMacTable> findByMacAddressAndDeviceId(String macAddress, Long deviceId);
+    boolean existsByDevice_IdAndIpAddress(
+            Long deviceId,
+            String ipAddress
+    );
 
-    @Query("SELECT a FROM ArpMacTable a WHERE " +
-           "(:keyword IS NULL OR LOWER(a.ipAddress) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-           "LOWER(a.macAddress) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-           "LOWER(a.interfaceName) LIKE LOWER(CONCAT('%', :keyword, '%')))")
-    Page<ArpMacTable> searchArpMacEntries(@Param("keyword") String keyword, Pageable pageable);
+    boolean existsByDevice_IdAndIpAddressAndIdNot(
+            Long deviceId,
+            String ipAddress,
+            Long id
+    );
 }

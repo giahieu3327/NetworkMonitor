@@ -1,72 +1,68 @@
 package com.network_monitor.portal_service.model.entity;
 
-import com.network_monitor.portal_service.model.enums.IncidentSeverity;
-import com.network_monitor.portal_service.model.enums.IncidentStatus;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "incidents")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Incident {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "device_id", nullable = false)
     private Device device;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "rule_id")
-    private ThresholdRule thresholdRule;
+    @Column(name = "metric_type", length = 100, nullable = false)
+    private String metricType;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "syslog_rule_id")
-    private SyslogRule syslogRule;
+    @Column(name = "severity", length = 20, nullable = false)
+    private String severity;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "syslog_id")
-    private Syslog syslog;
-
-    @Enumerated(EnumType.STRING)
-    @Column(length = 20, nullable = false)
-    private IncidentSeverity severity;
-
-    @Column(length = 200, nullable = false)
+    @Column(name = "title", length = 200, nullable = false)
     private String title;
 
-    @Column(columnDefinition = "TEXT")
-    private String message;
+    @Column(name = "description", columnDefinition = "text")
+    private String description;
 
-    @Column(name = "camunda_process_id", length = 64)
-    private String camundaProcessId;
+    @Column(name = "peak_value", nullable = false)
+    private Double peakValue;
+
+    @Column(name = "threshold_limit", nullable = false)
+    private Double thresholdLimit;
+
+    @Column(name = "breach_count", nullable = false)
+    private Integer breachCount;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "breach_samples", columnDefinition = "jsonb")
+    private JsonNode breachSamples;
 
     @Builder.Default
-    @Enumerated(EnumType.STRING)
-    @Column(length = 30)
-    private IncidentStatus status = IncidentStatus.OPEN;
+    @Column(name = "status", length = 20, nullable = false)
+    private String status = "OPEN";
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "acknowledged_by")
-    private User acknowledgedBy;
+    @Builder.Default
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private OffsetDateTime createdAt = OffsetDateTime.now();
 
-    @Column(name = "acknowledged_at")
-    private OffsetDateTime acknowledgedAt;
+    @Builder.Default
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt = OffsetDateTime.now();
 
     @Column(name = "resolved_at")
     private OffsetDateTime resolvedAt;
-
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private OffsetDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private OffsetDateTime updatedAt;
 }

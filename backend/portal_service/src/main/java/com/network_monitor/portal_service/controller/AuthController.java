@@ -1,16 +1,22 @@
 package com.network_monitor.portal_service.controller;
 
-import com.network_monitor.portal_service.model.dto.*;
-import com.network_monitor.portal_service.model.entity.User;
-import com.network_monitor.portal_service.service.*;
+import com.network_monitor.portal_service.model.dto.request.*;
+import com.network_monitor.portal_service.model.dto.response.*;
+import com.network_monitor.portal_service.service.AuthService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -18,63 +24,205 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
-    private final UserService userService;
+
+    private static final String EXCEL_CONTENT_TYPE =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    // =========================================================
+    // REGISTRATION
+    // =========================================================
 
     @PostMapping("/register")
     @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
-    public ResponseEntity<User> register(
-            @Valid @RequestBody RegisterRequest request,
-            @AuthenticationPrincipal Jwt jwt
-    ) {
-        String currentUsername = jwt.getClaimAsString("preferred_username");
-        User registeredUser = authService.register(request, currentUsername);
-        return ResponseEntity.status(HttpStatus.CREATED).body(registeredUser);
+    public ResponseEntity<ApiResponse<Void>> register(
+            @Valid @RequestBody RegisterRequest request) {
+
+        ApiResponse<Void> response = authService.register(request);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    // =========================================================
+    // USER IMPORT / EXPORT
+    // =========================================================
+
+    @PostMapping(
+            value = "/import",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> importUsers(
+            @RequestParam("file") MultipartFile file) {
+
+        ApiResponse<Map<String, Object>> response =
+                authService.importUsersFromExcel(file);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/export")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    public ResponseEntity<byte[]> exportUsers() throws IOException {
+        byte[] file = authService.exportUsers();
+
+        return downloadFile(file, "users.xlsx", EXCEL_CONTENT_TYPE);
+    }
+
+    @GetMapping("/import/template")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    public ResponseEntity<byte[]> downloadUserImportTemplate()
+            throws IOException {
+
+        byte[] file = authService.downloadUserImportTemplate();
+
+        return downloadFile(
+                file,
+                "users-import-template.xlsx",
+                EXCEL_CONTENT_TYPE
+        );
+    }
+
+    // =========================================================
+    // AUTHENTICATION
+    // =========================================================
+
     @PostMapping("/login")
-    public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
-        TokenResponse tokenResponse = authService.login(request);
-        return ResponseEntity.ok(tokenResponse);
+    public ResponseEntity<ApiResponse<TokenResponse>> login(
+            @Valid @RequestBody LoginRequest request) {
+
+        ApiResponse<TokenResponse> response = authService.login(request);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<TokenResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
-        TokenResponse tokenResponse = authService.refreshToken(request);
-        return ResponseEntity.ok(tokenResponse);
+    public ResponseEntity<ApiResponse<TokenResponse>> refresh(
+            @Valid @RequestBody RefreshRequest request) {
+
+        ApiResponse<TokenResponse> response = authService.refresh(request);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@Valid @RequestBody LogoutRequest request) {
-        authService.logout(request);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<ApiResponse<Void>> logout(
+            @Valid @RequestBody LogoutRequest request) {
+
+        ApiResponse<Void> response = authService.logout(request);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/me")
-    public ResponseEntity<UserProfileResponse> getMe(@AuthenticationPrincipal Jwt jwt) {
-        UserProfileResponse userProfile = authService.getMe(jwt);
-        return ResponseEntity.ok(userProfile);
+    // =========================================================
+    // PASSWORD RECOVERY
+    // =========================================================
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request) {
+
+        ApiResponse<Void> response = authService.forgotPassword(request);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
     }
 
-    @PutMapping("/change-password")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<Void> changePassword(
-            @AuthenticationPrincipal org.springframework.security.oauth2.jwt.Jwt jwt,
-            @jakarta.validation.Valid @RequestBody com.network_monitor.portal_service.model.dto.ChangePasswordRequest request
-    ) {
-        authService.changePassword(jwt, request);
-        return ResponseEntity.noContent().build();
+    @PostMapping("/verify-reset-password-otp")
+    public ResponseEntity<ApiResponse<String>> verifyResetPasswordOtp(
+            @Valid @RequestBody VerifyResetPasswordOtpRequest request) {
+
+        ApiResponse<String> response =
+                authService.verifyResetPasswordOtp(request);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
     }
 
-    @PutMapping("/profile")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<com.network_monitor.portal_service.model.entity.User> updateOwnProfile(
-            @AuthenticationPrincipal org.springframework.security.oauth2.jwt.Jwt jwt,
-            @jakarta.validation.Valid @RequestBody com.network_monitor.portal_service.model.dto.UpdateUserProfileRequest request
-    ) {
-        String userId = jwt.getSubject();
-        com.network_monitor.portal_service.model.entity.User updatedUser = userService.updateUserProfile(
-                userId, request.getEmail(), request.getFullName(), request.getPhoneNumber()
-        );
-        return ResponseEntity.ok(updatedUser);
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request) {
+
+        ApiResponse<Void> response = authService.resetPassword(request);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    // =========================================================
+    // EMAIL VERIFICATION
+    // =========================================================
+
+    @PostMapping("/send-verification-email")
+    public ResponseEntity<ApiResponse<Void>> sendVerificationEmail(
+            @Valid @RequestBody SendVerificationEmailRequest request) {
+
+        ApiResponse<Void> response =
+                authService.sendVerificationEmail(request);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<ApiResponse<String>> verifyEmail(
+            @Valid @RequestBody VerifyEmailRequest request) {
+
+        ApiResponse<String> response = authService.verifyEmail(request);
+
+        if (!response.isSuccess()) {
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    // =========================================================
+    // COMMON DOWNLOAD HELPER
+    // =========================================================
+
+    private ResponseEntity<byte[]> downloadFile(
+            byte[] file,
+            String filename,
+            String contentType) {
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + filename + "\""
+                )
+                .body(file);
     }
 }

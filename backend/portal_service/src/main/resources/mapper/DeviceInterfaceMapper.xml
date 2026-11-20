@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.network_monitor.portal_service.mapper.DeviceInterfaceMapper">
+
+    <!-- ==================== RESULT MAP ==================== -->
+
+    <resultMap id="DeviceInterfaceResultMap"
+               type="com.network_monitor.portal_service.model.entity.DeviceInterface">
+
+        <id property="deviceId" column="device_id"/>
+
+        <id property="interfaceIndex" column="interface_index"/>
+
+        <result property="interfaceName" column="interface_name"/>
+
+        <result property="interfaceType" column="interface_type"/>
+
+        <result property="mtu" column="mtu"/>
+
+        <result property="speedBps" column="speed_bps"/>
+
+        <result property="physAddress" column="phys_address"/>
+
+        <result property="adminStatus" column="admin_status"/>
+
+        <result property="operStatus" column="oper_status"/>
+
+        <result property="interfaceAlias" column="interface_alias"/>
+
+        <result property="ipAddress" column="ip_address"/>
+
+        <result property="subnetMask" column="subnet_mask"/>
+
+        <result property="updatedAt" column="updated_at"/>
+
+        <!-- Mapping Device -->
+        <association property="device"
+                     javaType="com.network_monitor.portal_service.model.entity.Device">
+
+            <id property="id" column="device_id"/>
+
+            <result property="deviceName" column="device_name"/>
+
+        </association>
+
+    </resultMap>
+
+
+    <!-- ==================== REUSABLE COLUMNS ==================== -->
+
+    <sql id="InterfaceColumns">
+
+        di.device_id,
+        d.device_name,
+        di.interface_index,
+        di.interface_name,
+        di.interface_type,
+        di.mtu,
+        di.speed_bps,
+        di.phys_address,
+        di.admin_status,
+        di.oper_status,
+        di.interface_alias,
+        di.ip_address,
+        di.subnet_mask,
+        di.updated_at
+
+    </sql>
+
+
+    <!-- ==================== REUSABLE KEYWORD ==================== -->
+
+    <sql id="InterfaceKeywordCondition">
+
+        <if test="keyword != null and keyword != ''">
+
+            AND (
+
+                CAST(di.interface_index AS TEXT)
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+                OR di.interface_name
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+                OR CAST(di.interface_type AS TEXT)
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+                OR di.phys_address
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+                OR di.admin_status
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+                OR di.oper_status
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+                OR di.interface_alias
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+                OR CAST(di.ip_address AS TEXT)
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+                OR CAST(di.subnet_mask AS TEXT)
+                    ILIKE CONCAT('%', #{keyword}, '%')
+
+            )
+
+        </if>
+
+    </sql>
+
+
+    <!-- ==================== REUSABLE ORDER BY ==================== -->
+
+    <sql id="InterfaceOrderBy">
+
+        ORDER BY
+
+        <choose>
+
+            <when test="sortBy == 'interfaceIndex'">
+                di.interface_index
+            </when>
+
+            <when test="sortBy == 'interfaceName'">
+                di.interface_name
+            </when>
+
+            <when test="sortBy == 'interfaceType'">
+                di.interface_type
+            </when>
+
+            <when test="sortBy == 'mtu'">
+                di.mtu
+            </when>
+
+            <when test="sortBy == 'speedBps'">
+                di.speed_bps
+            </when>
+
+            <when test="sortBy == 'physAddress'">
+                di.phys_address
+            </when>
+
+            <when test="sortBy == 'adminStatus'">
+                di.admin_status
+            </when>
+
+            <when test="sortBy == 'operStatus'">
+                di.oper_status
+            </when>
+
+            <when test="sortBy == 'ipAddress'">
+                di.ip_address
+            </when>
+
+            <when test="sortBy == 'subnetMask'">
+                di.subnet_mask
+            </when>
+
+            <when test="sortBy == 'updatedAt'">
+                di.updated_at
+            </when>
+
+            <otherwise>
+                di.updated_at
+            </otherwise>
+
+        </choose>
+
+        <choose>
+
+            <when test="direction == 'ASC'">
+                ASC
+            </when>
+
+            <otherwise>
+                DESC
+            </otherwise>
+
+        </choose>
+
+        , di.interface_index ASC
+
+    </sql>
+
+
+    <!-- ====================================================== -->
+    <!-- 1. GET ALL INTERFACES BY DEVICE ID                      -->
+    <!-- ====================================================== -->
+
+    <select id="searchInterfacesByDeviceId"
+            resultMap="DeviceInterfaceResultMap">
+
+        SELECT
+
+        <include refid="InterfaceColumns"/>
+
+        FROM device_interfaces di
+
+        INNER JOIN devices d
+            ON d.id = di.device_id
+
+        <where>
+
+            di.device_id = #{deviceId}
+
+            <include refid="InterfaceKeywordCondition"/>
+
+        </where>
+
+        <include refid="InterfaceOrderBy"/>
+
+        LIMIT #{pageSize}
+
+        OFFSET #{offset}
+
+    </select>
+
+
+    <!-- COUNT ALL INTERFACES BY DEVICE ID -->
+
+    <select id="countInterfacesByDeviceId"
+            resultType="long">
+
+        SELECT COUNT(*)
+
+        FROM device_interfaces di
+
+        INNER JOIN devices d
+            ON d.id = di.device_id
+
+        <where>
+
+            di.device_id = #{deviceId}
+
+            <include refid="InterfaceKeywordCondition"/>
+
+        </where>
+
+    </select>
+
+</mapper>

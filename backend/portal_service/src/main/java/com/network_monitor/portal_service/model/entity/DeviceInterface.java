@@ -1,55 +1,111 @@
+
 package com.network_monitor.portal_service.model.entity;
 
-import com.network_monitor.portal_service.model.enums.AdminStatus;
-import com.network_monitor.portal_service.model.enums.OperStatus;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.ColumnTransformer;
 
+import java.io.Serializable;
 import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "device_interfaces")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@IdClass(DeviceInterface.DeviceInterfaceId.class)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class DeviceInterface {
 
+    // Khóa chính kép: device_id + interface_index.
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "device_id", nullable = false)
+    private Long deviceId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "device_id", nullable = false)
-    private Device device;
-
+    @Id
     @Column(name = "interface_index", nullable = false)
     private Integer interfaceIndex;
 
-    @Column(name = "interface_name", length = 50, nullable = false)
+    // Quan hệ chỉ đọc vì deviceId quản lý khóa ngoại.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+        name = "device_id",
+        referencedColumnName = "id",
+        insertable = false,
+        updatable = false
+    )
+    private Device device;
+
+    // Tên interface.
+    // SQL cho phép NULL.
+    @Column(name = "interface_name", length = 150)
     private String interfaceName;
 
-    @Column(name = "mac_address", length = 17)
-    private String macAddress;
+    // IANA ifType.
+    @Column(name = "interface_type")
+    private Integer interfaceType;
 
-    @Builder.Default
+    // MTU tính bằng byte.
+    @Column(name = "mtu")
+    private Integer mtu;
+
+    // Tốc độ tính bằng bit/giây.
     @Column(name = "speed_bps")
-    private Long speedBps = 1000000000L;
+    private Long speedBps;
+
+    @Column(name = "phys_address", length = 64)
+    private String physAddress;
+
+    // UP, DOWN, TESTING, UNKNOWN.
+    @Column(name = "admin_status", length = 30)
+    private String adminStatus;
+
+    // UP, DOWN, TESTING, UNKNOWN, DORMANT,
+    // NOT_PRESENT, LOWER_LAYER_DOWN.
+    @Column(name = "oper_status", length = 30)
+    private String operStatus;
+
+    @Column(name = "interface_alias", columnDefinition = "text")
+    private String interfaceAlias;
+
+    // IP đại diện của interface.
+    // PostgreSQL INET.
+    @ColumnTransformer(
+        read = "ip_address::text",
+        write = "?::inet"
+    )
+    @Column(
+        name = "ip_address",
+        columnDefinition = "inet"
+    )
+    private String ipAddress;
+
+    // Subnet mask của interface.
+    // PostgreSQL INET.
+    @ColumnTransformer(
+        read = "subnet_mask::text",
+        write = "?::inet"
+    )
+    @Column(
+        name = "subnet_mask",
+        columnDefinition = "inet"
+    )
+    private String subnetMask;
 
     @Builder.Default
-    @Enumerated(EnumType.STRING)
-    @Column(name = "admin_status", length = 10)
-    private AdminStatus adminStatus = AdminStatus.UP;
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt = OffsetDateTime.now();
 
-    @Builder.Default
-    @Enumerated(EnumType.STRING)
-    @Column(name = "oper_status", length = 10)
-    private OperStatus operStatus = OperStatus.UP;
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @EqualsAndHashCode
+    public static class DeviceInterfaceId implements Serializable {
 
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private OffsetDateTime createdAt;
+        private Long deviceId;
 
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private OffsetDateTime updatedAt;
+        private Integer interfaceIndex;
+    }
 }
