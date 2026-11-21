@@ -11,6 +11,20 @@ import {
 import { axiosClient } from '../../../api/axiosClient';
 import './TabDeviceMetrics.css';
 
+const ALLOWED_VIEW_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+  'ROLE_GUEST_VIEWER',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
 const formatTimeMinute = (dateObj) => {
   const hh = String(dateObj.getHours()).padStart(2, '0');
   const mm = String(dateObj.getMinutes()).padStart(2, '0');
@@ -46,13 +60,35 @@ const formatMemoryKB = (kbValue) => {
   return `${mb.toFixed(2)} MB (${num.toLocaleString('vi-VN')} KB)`;
 };
 
-const TabDeviceRam = ({ deviceId }) => {
+const TabDeviceRam = ({ deviceId, currentUser }) => {
+  const userRoles = useMemo(() => {
+    const roles = new Set();
+
+    if (currentUser?.roleName) {
+      roles.add(normalizeRole(currentUser.roleName));
+    }
+
+    if (Array.isArray(currentUser?.roles)) {
+      currentUser.roles.forEach((role) => {
+        const normalized = normalizeRole(role);
+        if (normalized) roles.add(normalized);
+      });
+    }
+
+    return roles;
+  }, [currentUser]);
+
+  const canViewRam = useMemo(() => {
+    if (!currentUser) return true;
+    return Array.from(userRoles).some((role) => ALLOWED_VIEW_ROLES.has(role));
+  }, [currentUser, userRoles]);
+
   const [latestData, setLatestData] = useState(null);
   const [historyData, setHistoryData] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchMetrics = useCallback(async (isInitial = false) => {
-    if (!deviceId) return;
+    if (!deviceId || !canViewRam) return;
     if (isInitial) setLoading(true);
 
     try {
@@ -75,9 +111,14 @@ const TabDeviceRam = ({ deviceId }) => {
     } finally {
       if (isInitial) setLoading(false);
     }
-  }, [deviceId]);
+  }, [deviceId, canViewRam]);
 
   useEffect(() => {
+    if (!canViewRam) {
+      setLoading(false);
+      return;
+    }
+
     fetchMetrics(true);
 
     let intervalId = null;
@@ -92,7 +133,7 @@ const TabDeviceRam = ({ deviceId }) => {
       clearTimeout(timeoutId);
       if (intervalId) clearInterval(intervalId);
     };
-  }, [fetchMetrics]);
+  }, [fetchMetrics, canViewRam]);
 
   const tableRows = useMemo(() => {
     if (!latestData) return [];
@@ -173,6 +214,14 @@ const TabDeviceRam = ({ deviceId }) => {
 
     return filledPoints;
   }, [historyData]);
+
+  if (!canViewRam) {
+    return (
+      <div className="permission-message">
+        Bạn không có quyền xem thông số RAM của thiết bị này.
+      </div>
+    );
+  }
 
   if (loading) {
     return (

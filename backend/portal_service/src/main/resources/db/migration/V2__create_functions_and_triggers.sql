@@ -47,3 +47,8 @@ CREATE TRIGGER trg_arp_mac_tables_updated_at
 BEFORE UPDATE ON arp_mac_tables
 FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_approval_tickets_updated_at
+BEFORE UPDATE ON approval_tickets
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();

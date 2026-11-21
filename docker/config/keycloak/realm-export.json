@@ -25,10 +25,6 @@
         "description": "Kỹ sư Trực NOC - Theo dõi Dashboard real-time, tiếp nhận và duyệt Acknowledge Ticket (Camunda Workflow)"
       },
       {
-        "name": "ROLE_AUDITOR",
-        "description": "Chuyên viên Kiểm toán - Xem Audit Logs và lịch sử thao tác hệ thống"
-      },
-      {
         "name": "ROLE_REPORT_MANAGER",
         "description": "Quản lý Báo cáo - Tùy chỉnh và xuất báo cáo SLA Uptime qua JasperReports"
       },

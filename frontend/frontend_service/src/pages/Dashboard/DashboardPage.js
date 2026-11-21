@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { axiosClient } from '../../api/axiosClient';
 import '../../styles/common.css';
@@ -6,6 +6,23 @@ import './DashboardPage.css';
 
 import TabDevices from './tabs/TabDevices';
 import TabUsers from './tabs/TabUsers';
+import TabTickets from './tabs/TabTickets';
+
+const TICKET_ALLOWED_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_NETWORK_ADMIN',
+]);
+
+const USER_ALLOWED_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
 
 const DashboardPage = () => {
   const [me, setMe] = useState(null);
@@ -39,6 +56,41 @@ const DashboardPage = () => {
     fetchMe();
   }, [navigate]);
 
+  const userRoles = useMemo(() => {
+    const roles = new Set();
+
+    if (me?.roleName) {
+      roles.add(normalizeRole(me.roleName));
+    }
+
+    if (Array.isArray(me?.roles)) {
+      me.roles.forEach((role) => {
+        const normalized = normalizeRole(role);
+        if (normalized) roles.add(normalized);
+      });
+    }
+
+    return roles;
+  }, [me]);
+
+  const canAccessTickets = useMemo(
+    () => Array.from(userRoles).some((role) => TICKET_ALLOWED_ROLES.has(role)),
+    [userRoles]
+  );
+
+  const canAccessUsers = useMemo(
+    () => Array.from(userRoles).some((role) => USER_ALLOWED_ROLES.has(role)),
+    [userRoles]
+  );
+
+  useEffect(() => {
+    if (activeTab === 'tickets' && !canAccessTickets) {
+      setActiveTab('devices');
+    } else if (activeTab === 'users' && !canAccessUsers) {
+      setActiveTab('devices');
+    }
+  }, [activeTab, canAccessTickets, canAccessUsers]);
+
   const handleProfileClick = () => {
     setIsSidebarOpen(false);
     navigate('/home');
@@ -49,14 +101,17 @@ const DashboardPage = () => {
     setIsSidebarOpen(false);
   };
 
-  const handleUsersTab = () => {
-    setActiveTab('users');
+  const handleTicketsTab = () => {
+    if (!canAccessTickets) return;
+    setActiveTab('tickets');
     setIsSidebarOpen(false);
   };
 
-  const isSuperAdmin =
-    me?.roleName === 'ROLE_SUPER_ADMIN' ||
-    me?.roleName === 'SUPER_ADMIN';
+  const handleUsersTab = () => {
+    if (!canAccessUsers) return;
+    setActiveTab('users');
+    setIsSidebarOpen(false);
+  };
 
   const username = me?.username || 'User';
 
@@ -87,7 +142,6 @@ const DashboardPage = () => {
         </div>
       </header>
 
-      {/* Sidebar Navigation */}
       {isSidebarOpen && (
         <div className="sidebar-overlay">
           <div
@@ -117,8 +171,18 @@ const DashboardPage = () => {
                 🌐 Quản lý thiết bị
               </button>
 
-              {/* Chỉ hiển thị tab Quản lý người dùng cho ROLE_SUPER_ADMIN */}
-              {isSuperAdmin && (
+              {canAccessTickets && (
+                <button
+                  className={`sidebar-nav-button ${
+                    activeTab === 'tickets' ? 'active' : ''
+                  }`}
+                  onClick={handleTicketsTab}
+                >
+                  📋 Phê duyệt Ticket
+                </button>
+              )}
+
+              {canAccessUsers && (
                 <button
                   className={`sidebar-nav-button ${
                     activeTab === 'users' ? 'active' : ''
@@ -133,10 +197,14 @@ const DashboardPage = () => {
         </div>
       )}
 
-      {/* Main Container Render Dynamic Tabs */}
       <main className="dashboard-main">
-        {activeTab === 'devices' && <TabDevices />}
-        {activeTab === 'users' && <TabUsers currentUser={me} />}
+        {activeTab === 'devices' && <TabDevices currentUser={me} />}
+        {activeTab === 'tickets' && canAccessTickets && (
+          <TabTickets currentUser={me} />
+        )}
+        {activeTab === 'users' && canAccessUsers && (
+          <TabUsers currentUser={me} />
+        )}
       </main>
     </div>
   );

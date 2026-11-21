@@ -1,8 +1,161 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { axiosClient } from '../../api/axiosClient';
 import '../../styles/common.css';
 import './OidConfigPage.css';
+
+const ALLOWED_VIEW_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+  'ROLE_GUEST_VIEWER',
+]);
+
+const OID_CONFIG_MANAGE_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+
+  const trimmed = role.trim().toUpperCase();
+
+  if (!trimmed) return '';
+
+  return trimmed.startsWith('ROLE_')
+    ? trimmed
+    : `ROLE_${trimmed}`;
+};
+
+const getRoleValue = (role) => {
+  if (typeof role === 'string') {
+    return role;
+  }
+
+  if (role && typeof role === 'object') {
+    return (
+      role.authority ||
+      role.roleName ||
+      role.role_name ||
+      role.name ||
+      role.role ||
+      ''
+    );
+  }
+
+  return '';
+};
+
+const getUserRoles = (user) => {
+  const roles = new Set();
+
+  if (!user || typeof user !== 'object') {
+    return roles;
+  }
+
+  const singleRoleFields = [
+    user.roleName,
+    user.role_name,
+    user.role,
+    user.authority,
+  ];
+
+  singleRoleFields.forEach((role) => {
+    const normalized = normalizeRole(getRoleValue(role));
+
+    if (normalized) {
+      roles.add(normalized);
+    }
+  });
+
+  const roleArrayFields = [
+    user.roles,
+    user.authorities,
+    user.realmRoles,
+    user.realm_roles,
+    user.realm_access?.roles,
+  ];
+
+  roleArrayFields.forEach((roleArray) => {
+    if (Array.isArray(roleArray)) {
+      roleArray.forEach((role) => {
+        const normalized = normalizeRole(getRoleValue(role));
+
+        if (normalized) {
+          roles.add(normalized);
+        }
+      });
+    }
+  });
+
+  if (typeof user.scope === 'string') {
+    user.scope
+      .split(/[\s,]+/)
+      .map((r) => normalizeRole(r))
+      .filter(Boolean)
+      .forEach((r) => roles.add(r));
+  }
+
+  return roles;
+};
+
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const jsonStr = decodeURIComponent(
+      atob(padded)
+        .split('')
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join('')
+    );
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+};
+
+const readStoredUser = () => {
+  try {
+    const rawUser = localStorage.getItem('current_user');
+    if (rawUser) {
+      return JSON.parse(rawUser);
+    }
+  } catch {
+  }
+
+  const storedRole = localStorage.getItem('user_role');
+  let storedRoles = [];
+  try {
+    const rawRoles = localStorage.getItem('user_roles');
+    if (rawRoles) {
+      const parsed = JSON.parse(rawRoles);
+      if (Array.isArray(parsed)) storedRoles = parsed;
+    }
+  } catch {
+  }
+
+  if (storedRole || storedRoles.length > 0) {
+    return {
+      roleName: storedRole || '',
+      roles: storedRoles,
+    };
+  }
+
+  const accessToken = localStorage.getItem('access_token');
+  if (accessToken) {
+    const claims = decodeJwtPayload(accessToken);
+    if (claims) {
+      return claims;
+    }
+  }
+
+  return null;
+};
 
 const SCOPE_OPTIONS = [
   { value: 'DEVICE', label: 'DEVICE - Thông tin thiết bị' },
@@ -36,14 +189,103 @@ const getScopeLabel = (scope) => {
   );
 };
 
-const OidConfigPage = () => {
+const OidConfigPage = ({ currentUser }) => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const passedUser =
+    currentUser || location.state?.currentUser || null;
+
+  const [profileUser, setProfileUser] = useState(
+    () => passedUser || readStoredUser()
+  );
+  const [profileResolved, setProfileResolved] = useState(
+    Boolean(passedUser)
+  );
+  const [profileError, setProfileError] = useState('');
+
+  useEffect(() => {
+    if (passedUser) {
+      setProfileUser(passedUser);
+      setProfileResolved(true);
+      setProfileError('');
+    }
+  }, [passedUser]);
+
+  useEffect(() => {
+    if (passedUser) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchCurrentUser = async () => {
+      const accessToken = localStorage.getItem('access_token');
+      if (!accessToken) {
+        if (!cancelled) {
+          setProfileUser(null);
+          setProfileResolved(true);
+        }
+        return;
+      }
+
+      try {
+        setProfileResolved(false);
+        setProfileError('');
+
+        const response = await axiosClient.get('/profile/me');
+        const data = getResponseData(response);
+
+        if (!cancelled) {
+          setProfileUser(data);
+          setProfileResolved(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const fallbackUser = readStoredUser();
+          setProfileUser(fallbackUser);
+          if (!fallbackUser) {
+            setProfileError(
+              err.response?.data?.message ||
+                'Không thể xác định quyền người dùng.'
+            );
+          }
+          setProfileResolved(true);
+        }
+      }
+    };
+
+    fetchCurrentUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [passedUser]);
+
+  const effectiveUser = passedUser || profileUser;
+
+  const userRoles = useMemo(() => {
+    return getUserRoles(effectiveUser);
+  }, [effectiveUser]);
+
+  const canViewOidConfig = useMemo(() => {
+    return Array.from(userRoles).some((role) =>
+      ALLOWED_VIEW_ROLES.has(role)
+    );
+  }, [userRoles]);
+
+  const canManageOidConfigs = useMemo(() => {
+    return Array.from(userRoles).some((role) =>
+      OID_CONFIG_MANAGE_ROLES.has(role)
+    );
+  }, [userRoles]);
 
   const [oidConfig, setOidConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -65,14 +307,31 @@ const OidConfigPage = () => {
   );
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleThemeChange = (e) => setIsDarkMode(e.matches);
+    const mediaQuery = window.matchMedia(
+      '(prefers-color-scheme: dark)'
+    );
+
+    const handleThemeChange = (e) => {
+      setIsDarkMode(e.matches);
+    };
 
     mediaQuery.addEventListener('change', handleThemeChange);
-    return () => mediaQuery.removeEventListener('change', handleThemeChange);
+
+    return () => {
+      mediaQuery.removeEventListener('change', handleThemeChange);
+    };
   }, []);
 
   const fetchOidConfig = useCallback(async () => {
+    if (!profileResolved) {
+      return;
+    }
+
+    if (!canViewOidConfig) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setErrorMsg('');
@@ -81,6 +340,7 @@ const OidConfigPage = () => {
       const data = getResponseData(response);
 
       setOidConfig(data);
+
       if (data) {
         setEditForm({
           metricScope: data.metricScope || 'DEVICE',
@@ -90,7 +350,8 @@ const OidConfigPage = () => {
           dataType: data.dataType || 'INTEGER',
           multiplier: String(data.multiplier ?? 1),
           interfaceIndex:
-            data.interfaceIndex !== null && data.interfaceIndex !== undefined
+            data.interfaceIndex !== null &&
+            data.interfaceIndex !== undefined
               ? String(data.interfaceIndex)
               : '',
           isActive: data.isActive ?? true,
@@ -98,23 +359,26 @@ const OidConfigPage = () => {
       }
     } catch (err) {
       setErrorMsg(
-        err.response?.data?.message || 'Không thể tải thông tin cấu hình OID!'
+        err.response?.data?.message ||
+          'Không thể tải thông tin cấu hình OID!'
       );
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, canViewOidConfig, profileResolved]);
 
   useEffect(() => {
-    if (id) {
+    if (id && profileResolved) {
       fetchOidConfig();
     }
-  }, [id, fetchOidConfig]);
+  }, [id, profileResolved, fetchOidConfig]);
 
   const handleBack = () => {
     if (oidConfig?.deviceId) {
       navigate(`/devices/${oidConfig.deviceId}`, {
-        state: { activeTab: 'oidconfig' },
+        state: {
+          activeTab: 'oidconfig',
+        },
       });
     } else {
       navigate(-1);
@@ -122,8 +386,13 @@ const OidConfigPage = () => {
   };
 
   const handleEditOpen = () => {
+    if (!canManageOidConfigs) {
+      return;
+    }
+
     setErrorMsg('');
     setSuccessMsg('');
+
     setEditForm({
       metricScope: oidConfig?.metricScope || 'DEVICE',
       metricType: oidConfig?.metricType || '',
@@ -138,6 +407,7 @@ const OidConfigPage = () => {
           : '',
       isActive: oidConfig?.isActive ?? true,
     });
+
     setIsEditModalOpen(true);
   };
 
@@ -167,13 +437,21 @@ const OidConfigPage = () => {
     }
 
     const multiplier = Number(editForm.multiplier);
+
     if (!Number.isFinite(multiplier) || multiplier <= 0) {
       return 'Hệ số nhân phải là số lớn hơn 0!';
     }
 
-    if (editForm.interfaceIndex !== '' && editForm.interfaceIndex !== null) {
+    if (
+      editForm.interfaceIndex !== '' &&
+      editForm.interfaceIndex !== null
+    ) {
       const interfaceIndex = Number(editForm.interfaceIndex);
-      if (!Number.isInteger(interfaceIndex) || interfaceIndex <= 0) {
+
+      if (
+        !Number.isInteger(interfaceIndex) ||
+        interfaceIndex <= 0
+      ) {
         return 'Interface Index phải là số nguyên lớn hơn 0!';
       }
     }
@@ -191,10 +469,16 @@ const OidConfigPage = () => {
 
   const handleUpdateOidConfig = async (e) => {
     e.preventDefault();
+
+    if (!canManageOidConfigs) {
+      return;
+    }
+
     setErrorMsg('');
     setSuccessMsg('');
 
     const validationError = validateForm();
+
     if (validationError) {
       setErrorMsg(validationError);
       return;
@@ -209,7 +493,8 @@ const OidConfigPage = () => {
       dataType: editForm.dataType,
       multiplier: Number(editForm.multiplier),
       interfaceIndex:
-        editForm.interfaceIndex !== '' && editForm.interfaceIndex !== null
+        editForm.interfaceIndex !== '' &&
+        editForm.interfaceIndex !== null
           ? Number(editForm.interfaceIndex)
           : null,
       isActive: editForm.isActive,
@@ -217,13 +502,17 @@ const OidConfigPage = () => {
 
     try {
       setSaving(true);
+
       await axiosClient.put(`/oid-configs/${id}`, payload);
+
       await fetchOidConfig();
+
       setSuccessMsg('Cập nhật cấu hình OID thành công!');
       setIsEditModalOpen(false);
     } catch (err) {
       setErrorMsg(
-        err.response?.data?.message || 'Cập nhật cấu hình OID thất bại!'
+        err.response?.data?.message ||
+          'Cập nhật cấu hình OID thất bại!'
       );
     } finally {
       setSaving(false);
@@ -231,6 +520,10 @@ const OidConfigPage = () => {
   };
 
   const handleDelete = async () => {
+    if (!canManageOidConfigs) {
+      return;
+    }
+
     if (
       !window.confirm(
         `Bạn có chắc chắn muốn xóa cấu hình OID [${oidConfig?.metricType || id}]?`
@@ -246,31 +539,99 @@ const OidConfigPage = () => {
       await axiosClient.delete(`/oid-configs/${id}`);
 
       alert('Xóa cấu hình OID thành công!');
+
       handleBack();
     } catch (err) {
       setErrorMsg(
-        err.response?.data?.message || 'Xóa cấu hình OID thất bại!'
+        err.response?.data?.message ||
+          'Xóa cấu hình OID thất bại!'
       );
+
       setDeleting(false);
     }
   };
 
-  if (loading) {
+  if (!profileResolved || loading) {
     return (
-      <div className={`auth-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
-        <div className="button-loading-state" style={{ color: 'var(--primary)' }}>
+      <div
+        className={`auth-page ${
+          isDarkMode ? 'dark-mode' : 'light-mode'
+        }`}
+      >
+        <div
+          className="button-loading-state"
+          style={{ color: 'var(--primary)' }}
+        >
           <span
             className="spinner"
-            style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }}
+            style={{
+              borderColor: 'var(--primary)',
+              borderTopColor: 'transparent',
+            }}
           />
-          Đang tải cấu hình OID...
+
+          {!profileResolved
+            ? 'Đang xác định quyền người dùng...'
+            : 'Đang tải cấu hình OID...'}
         </div>
       </div>
     );
   }
 
+  if (!canViewOidConfig) {
+    return (
+      <div
+        className={`oid-page ${
+          isDarkMode ? 'dark-mode' : 'light-mode'
+        }`}
+      >
+        <header className="oid-header">
+          <div className="oid-header-left">
+            <button
+              type="button"
+              className="oid-back-button"
+              onClick={handleBack}
+              title="Quay lại"
+            >
+              ←
+            </button>
+
+            <h2>CHI TIẾT CẤU HÌNH OID</h2>
+          </div>
+        </header>
+
+        <main className="oid-main">
+          <div className="oid-card">
+            <div className="permission-denied-box">
+              <div className="permission-denied-icon">!</div>
+              <h2 className="permission-denied-title">Không có quyền truy cập</h2>
+              <p className="permission-message">
+                {profileError ||
+                  'Bạn không có quyền xem cấu hình OID của thiết bị này.'}
+              </p>
+            </div>
+
+            <div className="oid-actions">
+              <button
+                type="button"
+                className="oid-cancel-btn"
+                onClick={handleBack}
+              >
+                Quay lại
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className={`oid-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+    <div
+      className={`oid-page ${
+        isDarkMode ? 'dark-mode' : 'light-mode'
+      }`}
+    >
       <header className="oid-header">
         <div className="oid-header-left">
           <button
@@ -281,6 +642,7 @@ const OidConfigPage = () => {
           >
             ←
           </button>
+
           <h2>CHI TIẾT CẤU HÌNH OID</h2>
         </div>
       </header>
@@ -289,8 +651,11 @@ const OidConfigPage = () => {
         {!oidConfig ? (
           <div className="oid-card">
             <div className="oid-alert error">
-              <span>{errorMsg || 'Không tìm thấy cấu hình OID.'}</span>
+              <span>
+                {errorMsg || 'Không tìm thấy cấu hình OID.'}
+              </span>
             </div>
+
             <div className="oid-actions">
               <button
                 type="button"
@@ -305,14 +670,21 @@ const OidConfigPage = () => {
           <div className="oid-card">
             <div className="oid-card-header">
               <div className="oid-avatar">
-                {oidConfig.metricType ? oidConfig.metricType.charAt(0).toUpperCase() : 'O'}
+                {oidConfig.metricType
+                  ? oidConfig.metricType.charAt(0).toUpperCase()
+                  : 'O'}
               </div>
 
               <div className="oid-header-info">
-                <h3>{oidConfig.metricType || `OID Config #${id}`}</h3>
+                <h3>
+                  {oidConfig.metricType ||
+                    `OID Config #${id}`}
+                </h3>
+
                 <p>
                   ID: #{oidConfig.id ?? id} ·{' '}
-                  {oidConfig.deviceName || `Device ID: #${oidConfig.deviceId ?? 'N/A'}`}
+                  {oidConfig.deviceName ||
+                    `Device ID: #${oidConfig.deviceId ?? 'N/A'}`}
                 </p>
               </div>
             </div>
@@ -332,6 +704,7 @@ const OidConfigPage = () => {
             <div className="oid-grid">
               <div className="oid-field">
                 <label>Phạm vi metric</label>
+
                 <input
                   type="text"
                   className="oid-input-box"
@@ -342,6 +715,7 @@ const OidConfigPage = () => {
 
               <div className="oid-field">
                 <label>Tên metric</label>
+
                 <input
                   type="text"
                   className="oid-input-box"
@@ -352,6 +726,7 @@ const OidConfigPage = () => {
 
               <div className="oid-field full-width">
                 <label>OID</label>
+
                 <input
                   type="text"
                   className="oid-input-box"
@@ -362,6 +737,7 @@ const OidConfigPage = () => {
 
               <div className="oid-field">
                 <label>Phương thức truy vấn</label>
+
                 <input
                   type="text"
                   className="oid-input-box"
@@ -376,6 +752,7 @@ const OidConfigPage = () => {
 
               <div className="oid-field">
                 <label>Kiểu dữ liệu</label>
+
                 <input
                   type="text"
                   className="oid-input-box"
@@ -386,6 +763,7 @@ const OidConfigPage = () => {
 
               <div className="oid-field">
                 <label>Hệ số nhân</label>
+
                 <input
                   type="text"
                   className="oid-input-box"
@@ -396,6 +774,7 @@ const OidConfigPage = () => {
 
               <div className="oid-field">
                 <label>Interface Index</label>
+
                 <input
                   type="text"
                   className="oid-input-box"
@@ -411,40 +790,52 @@ const OidConfigPage = () => {
 
               <div className="oid-field full-width">
                 <label>Trạng thái cấu hình</label>
-                <div className={`oid-status-badge ${oidConfig.isActive ? 'active' : 'inactive'}`}>
-                  {oidConfig.isActive ? '● Đang hoạt động (Active)' : '● Đã tắt (Inactive)'}
+
+                <div
+                  className={`oid-status-badge ${
+                    oidConfig.isActive ? 'active' : 'inactive'
+                  }`}
+                >
+                  {oidConfig.isActive
+                    ? '● Đang hoạt động (Active)'
+                    : '● Đã tắt (Inactive)'}
                 </div>
               </div>
             </div>
 
-            <div className="oid-actions">
-              <button
-                type="button"
-                className="btn-delete-oid"
-                onClick={handleDelete}
-                disabled={deleting || saving}
-              >
-                {deleting ? 'Đang xóa...' : 'Xóa Cấu Hình'}
-              </button>
+            {canManageOidConfigs && (
+              <div className="oid-actions">
+                <button
+                  type="button"
+                  className="btn-delete-oid"
+                  onClick={handleDelete}
+                  disabled={deleting || saving}
+                >
+                  {deleting
+                    ? 'Đang xóa...'
+                    : 'Xóa Cấu Hình'}
+                </button>
 
-              <button
-                type="button"
-                className="btn-edit-oid"
-                onClick={handleEditOpen}
-                disabled={deleting || saving}
-              >
-                Chỉnh Sửa Thông Tin
-              </button>
-            </div>
+                <button
+                  type="button"
+                  className="btn-edit-oid"
+                  onClick={handleEditOpen}
+                  disabled={deleting || saving}
+                >
+                  Chỉnh Sửa Thông Tin
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>
 
-      {isEditModalOpen && (
+      {canManageOidConfigs && isEditModalOpen && (
         <div className="oid-modal-overlay">
           <div className="oid-modal-card">
             <div className="oid-modal-header">
               <h3>CHỈNH SỬA CẤU HÌNH OID</h3>
+
               <button
                 type="button"
                 className="oid-modal-close-btn"
@@ -455,12 +846,17 @@ const OidConfigPage = () => {
               </button>
             </div>
 
-            {errorMsg && <div className="oid-alert error">{errorMsg}</div>}
+            {errorMsg && (
+              <div className="oid-alert error">
+                {errorMsg}
+              </div>
+            )}
 
             <form onSubmit={handleUpdateOidConfig}>
               <div className="oid-modal-row">
                 <div className="oid-form-group">
                   <label>Phạm vi metric *</label>
+
                   <select
                     className="oid-select-box"
                     value={editForm.metricScope}
@@ -473,7 +869,10 @@ const OidConfigPage = () => {
                     disabled={saving}
                   >
                     {SCOPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
+                      <option
+                        key={option.value}
+                        value={option.value}
+                      >
                         {option.label}
                       </option>
                     ))}
@@ -482,6 +881,7 @@ const OidConfigPage = () => {
 
                 <div className="oid-form-group">
                   <label>Tên metric *</label>
+
                   <input
                     type="text"
                     className="oid-input-box"
@@ -502,6 +902,7 @@ const OidConfigPage = () => {
 
               <div className="oid-form-group">
                 <label>OID *</label>
+
                 <input
                   type="text"
                   className="oid-input-box"
@@ -521,6 +922,7 @@ const OidConfigPage = () => {
               <div className="oid-modal-row">
                 <div className="oid-form-group">
                   <label>Phương thức truy vấn *</label>
+
                   <select
                     className="oid-select-box"
                     value={editForm.oidKind}
@@ -532,13 +934,19 @@ const OidConfigPage = () => {
                     }
                     disabled={saving}
                   >
-                    <option value="SINGLE">SINGLE - SNMP GET</option>
-                    <option value="TABLE_COLUMN">TABLE_COLUMN - SNMP WALK</option>
+                    <option value="SINGLE">
+                      SINGLE - SNMP GET
+                    </option>
+
+                    <option value="TABLE_COLUMN">
+                      TABLE_COLUMN - SNMP WALK
+                    </option>
                   </select>
                 </div>
 
                 <div className="oid-form-group">
                   <label>Kiểu dữ liệu *</label>
+
                   <select
                     className="oid-select-box"
                     value={editForm.dataType}
@@ -562,6 +970,7 @@ const OidConfigPage = () => {
               <div className="oid-modal-row">
                 <div className="oid-form-group">
                   <label>Hệ số nhân *</label>
+
                   <input
                     type="number"
                     className="oid-input-box"
@@ -587,6 +996,7 @@ const OidConfigPage = () => {
                       ? '*'
                       : ''}
                   </label>
+
                   <input
                     type="number"
                     className="oid-input-box"
@@ -623,6 +1033,7 @@ const OidConfigPage = () => {
                   }
                   disabled={saving}
                 />
+
                 <label htmlFor="oidActiveCheck">
                   Kích hoạt cấu hình OID (Active)
                 </label>
@@ -637,12 +1048,15 @@ const OidConfigPage = () => {
                 >
                   Hủy
                 </button>
+
                 <button
                   type="submit"
                   className="oid-save-btn"
                   disabled={saving}
                 >
-                  {saving ? 'ĐANG LƯU...' : 'LƯU THAY ĐỔI'}
+                  {saving
+                    ? 'ĐANG LƯU...'
+                    : 'LƯU THAY ĐỔI'}
                 </button>
               </div>
             </form>

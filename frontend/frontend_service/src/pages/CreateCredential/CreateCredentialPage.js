@@ -1,8 +1,106 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { axiosClient } from '../../api/axiosClient';
 import '../../styles/common.css';
 import './CreateCredentialPage.css';
+
+const CREDENTIAL_MANAGE_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
+const extractRoles = (source) => {
+  const rolesSet = new Set();
+  if (!source) return rolesSet;
+
+  const pushRole = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach((item) => pushRole(item));
+      return;
+    }
+    if (typeof val === 'string') {
+      val
+        .split(/[\s,]+/)
+        .map((r) => normalizeRole(r))
+        .filter(Boolean)
+        .forEach((r) => rolesSet.add(r));
+    } else if (typeof val === 'object') {
+      pushRole(val.roleName || val.name || val.authority || val.role);
+    }
+  };
+
+  pushRole(source.roleName);
+  pushRole(source.roles);
+  pushRole(source.authorities);
+  pushRole(source.scope);
+
+  return rolesSet;
+};
+
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const jsonStr = decodeURIComponent(
+      atob(padded)
+        .split('')
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join('')
+    );
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+};
+
+const readStoredUser = () => {
+  try {
+    const rawUser = localStorage.getItem('current_user');
+    if (rawUser) {
+      return JSON.parse(rawUser);
+    }
+  } catch {
+    // ignore parse error
+  }
+
+  const storedRole = localStorage.getItem('user_role');
+  let storedRoles = [];
+  try {
+    const rawRoles = localStorage.getItem('user_roles');
+    if (rawRoles) {
+      const parsed = JSON.parse(rawRoles);
+      if (Array.isArray(parsed)) storedRoles = parsed;
+    }
+  } catch {
+    // ignore parse error
+  }
+
+  if (storedRole || storedRoles.length > 0) {
+    return {
+      roleName: storedRole || '',
+      roles: storedRoles,
+    };
+  }
+
+  const accessToken = localStorage.getItem('access_token');
+  if (accessToken) {
+    const claims = decodeJwtPayload(accessToken);
+    if (claims) {
+      return claims;
+    }
+  }
+
+  return null;
+};
 
 const EyeIcon = ({ show }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -20,9 +118,20 @@ const EyeIcon = ({ show }) => (
   </svg>
 );
 
-const CreateCredentialPage = () => {
+const CreateCredentialPage = ({
+  currentUser: currentUserProp,
+  canManageDevices: canManageDevicesProp,
+  canManageCredentials: canManageCredentialsProp,
+}) => {
   const { deviceId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const initialUser =
+    currentUserProp || location.state?.currentUser || readStoredUser();
+
+  const [resolvedUser, setResolvedUser] = useState(initialUser);
+  const [checkingPermission, setCheckingPermission] = useState(true);
 
   const [formData, setFormData] = useState({
     credentialName: '',
@@ -49,6 +158,70 @@ const CreateCredentialPage = () => {
     return () => mediaQuery.removeEventListener('change', handleThemeChange);
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const verifyPermission = async () => {
+      const accessToken = localStorage.getItem('access_token');
+      if (!accessToken) {
+        if (isMounted) {
+          setResolvedUser(null);
+          setCheckingPermission(false);
+        }
+        return;
+      }
+
+      try {
+        const res = await axiosClient.get('/profile/me');
+        const profileData = res.data?.data ?? res.data ?? null;
+        if (isMounted) {
+          setResolvedUser(profileData);
+        }
+      } catch {
+        if (isMounted) {
+          setResolvedUser(
+            currentUserProp || location.state?.currentUser || readStoredUser()
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setCheckingPermission(false);
+        }
+      }
+    };
+
+    verifyPermission();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserProp, location.state?.currentUser]);
+
+  const userRoles = useMemo(
+    () => extractRoles(resolvedUser),
+    [resolvedUser]
+  );
+
+  const canManageCredentials = useMemo(() => {
+    if (typeof canManageCredentialsProp === 'boolean') {
+      return canManageCredentialsProp;
+    }
+    if (typeof canManageDevicesProp === 'boolean') {
+      return canManageDevicesProp;
+    }
+    if (!resolvedUser || userRoles.size === 0) {
+      return false;
+    }
+    return Array.from(userRoles).some((role) =>
+      CREDENTIAL_MANAGE_ROLES.has(role)
+    );
+  }, [
+    canManageCredentialsProp,
+    canManageDevicesProp,
+    resolvedUser,
+    userRoles,
+  ]);
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData((prev) => ({
@@ -59,13 +232,19 @@ const CreateCredentialPage = () => {
   };
 
   const handleBack = () => {
-    navigate(`/devices/${deviceId}`, {
-      state: { activeTab: 'credentials' }
-    });
+    if (deviceId) {
+      navigate(`/devices/${deviceId}`, {
+        state: { activeTab: 'credentials' }
+      });
+    } else {
+      navigate('/dashboard');
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (checkingPermission || !canManageCredentials) return;
+
     setErrorMsg('');
 
     const port = Number(formData.port);
@@ -109,6 +288,45 @@ const CreateCredentialPage = () => {
       setLoading(false);
     }
   };
+
+  if (checkingPermission) {
+    return (
+      <div className={`create-credential-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+        <div className="button-loading-state" style={{ color: 'var(--primary)' }}>
+          <span
+            className="spinner"
+            style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }}
+          />
+          Đang kiểm tra quyền truy cập...
+        </div>
+      </div>
+    );
+  }
+
+  if (!canManageCredentials) {
+    return (
+      <div className={`create-credential-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+        <div className="create-credential-card">
+          <div className="permission-denied-box">
+            <div className="permission-denied-icon">!</div>
+            <h2 className="permission-denied-title">Không có quyền truy cập</h2>
+            <p className="permission-message">
+              Bạn không có quyền thêm thông tin xác thực cho thiết bị này. Chỉ tài khoản có vai trò SUPER_ADMIN hoặc NETWORK_ADMIN mới được phép truy cập trang này.
+            </p>
+          </div>
+          <div className="create-credential-actions">
+            <button
+              type="button"
+              className="cancel-btn"
+              onClick={handleBack}
+            >
+              Quay lại
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`create-credential-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>

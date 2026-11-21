@@ -16,7 +16,67 @@
   color: var(--text-primary-dark);
 }
 
-/* Header */
+.user-page-denied {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.user-page-denied.light-mode {
+  background-color: var(--bg-light);
+  color: var(--text-primary-light);
+}
+
+.user-page-denied.dark-mode {
+  background-color: var(--bg-dark);
+  color: var(--text-primary-dark);
+}
+
+.user-denied-card {
+  width: 100%;
+  max-width: 620px;
+  padding: 36px 32px;
+  border-radius: 20px;
+  box-sizing: border-box;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: all 0.3s ease;
+}
+
+.light-mode .user-denied-card {
+  background-color: var(--card-bg-light);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.08);
+}
+
+.dark-mode .user-denied-card {
+  background-color: var(--card-bg-dark);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.user-denied-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid;
+}
+
+.light-mode .user-denied-actions {
+  border-color: var(--border-light);
+}
+
+.dark-mode .user-denied-actions {
+  border-color: var(--border-dark);
+}
+
 .user-header {
   height: 72px;
   padding: 0 24px;
@@ -78,7 +138,6 @@
   opacity: 0.85;
 }
 
-/* Main Layout */
 .user-main {
   max-width: 860px;
   width: 100%;
@@ -212,7 +271,6 @@
   box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
-/* Status Badge */
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -237,7 +295,6 @@
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
-/* Actions Bar (3 Nút) */
 .user-actions {
   display: flex;
   align-items: center;
@@ -320,7 +377,6 @@
   cursor: not-allowed;
 }
 
-/* Role Select in Modal */
 .user-select-box {
   width: 100%;
   height: 46px;
@@ -351,7 +407,6 @@
   box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
-/* Modals */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -442,33 +497,37 @@
 
 .cancel-btn,
 .save-btn {
-  height: 42px;
-  padding: 0 18px;
+  height: 44px;
+  padding: 0 24px;
   border: none;
   border-radius: 10px;
   cursor: pointer;
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 600;
   transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.light-mode .cancel-btn {
-  background-color: #e2e8f0;
-  color: var(--text-primary-light);
+.cancel-btn {
+  background-color: #64748b;
+  color: #ffffff;
 }
 
-.dark-mode .cancel-btn {
-  background-color: #1e293b;
-  color: var(--text-primary-dark);
+.cancel-btn:hover:not(:disabled) {
+  background-color: #475569;
 }
 
 .save-btn {
   background-color: var(--primary);
   color: #ffffff;
+  box-shadow: 0 8px 16px -4px var(--primary-glow);
 }
 
 .save-btn:hover:not(:disabled) {
   background-color: var(--primary-hover);
+  transform: translateY(-1px);
 }
 
 .cancel-btn:disabled,
@@ -477,7 +536,6 @@
   cursor: not-allowed;
 }
 
-/* Alert Messages */
 .user-alert {
   display: flex;
   align-items: center;
@@ -512,6 +570,59 @@
   color: #86efac;
   background-color: rgba(20, 83, 45, 0.25);
   border-color: rgba(34, 197, 94, 0.2);
+}
+
+.permission-denied-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 12px 8px;
+}
+
+.permission-denied-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.light-mode .permission-denied-icon {
+  color: #dc2626;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.dark-mode .permission-denied-icon {
+  color: #fca5a5;
+  background-color: rgba(127, 29, 29, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.permission-denied-title {
+  margin: 0 0 10px;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.light-mode .permission-denied-title {
+  color: #dc2626;
+}
+
+.dark-mode .permission-denied-title {
+  color: #fca5a5;
+}
+
+.permission-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  opacity: 0.9;
 }
 
 @media (max-width: 640px) {

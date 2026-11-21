@@ -1,10 +1,129 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { axiosClient } from '../../../api/axiosClient';
 
-const TabUsers = ({ currentUser }) => {
+const USER_ADMIN_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  if (!trimmed) return '';
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
+const extractRoles = (source) => {
+  const rolesSet = new Set();
+  if (!source) return rolesSet;
+
+  const pushRole = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach((item) => pushRole(item));
+      return;
+    }
+    if (typeof val === 'string') {
+      val
+        .split(/[\s,]+/)
+        .map((r) => normalizeRole(r))
+        .filter(Boolean)
+        .forEach((r) => rolesSet.add(r));
+    } else if (typeof val === 'object') {
+      pushRole(val.roleName || val.role_name || val.name || val.authority || val.role);
+    }
+  };
+
+  pushRole(source.roleName);
+  pushRole(source.role_name);
+  pushRole(source.role);
+  pushRole(source.authority);
+  pushRole(source.roles);
+  pushRole(source.authorities);
+  pushRole(source.realmRoles);
+  pushRole(source.realm_roles);
+  pushRole(source.realm_access?.roles);
+  pushRole(source.scope);
+
+  return rolesSet;
+};
+
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const jsonStr = decodeURIComponent(
+      atob(padded)
+        .split('')
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join('')
+    );
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+};
+
+const readStoredUser = () => {
+  try {
+    const rawUser = localStorage.getItem('current_user');
+    if (rawUser) {
+      return JSON.parse(rawUser);
+    }
+  } catch {
+  }
+
+  const storedRole = localStorage.getItem('user_role');
+  let storedRoles = [];
+  try {
+    const rawRoles = localStorage.getItem('user_roles');
+    if (rawRoles) {
+      const parsed = JSON.parse(rawRoles);
+      if (Array.isArray(parsed)) storedRoles = parsed;
+    }
+  } catch {
+  }
+
+  if (storedRole || storedRoles.length > 0) {
+    return {
+      roleName: storedRole || '',
+      roles: storedRoles,
+    };
+  }
+
+  const accessToken = localStorage.getItem('access_token');
+  if (accessToken) {
+    const claims = decodeJwtPayload(accessToken);
+    if (claims) {
+      return claims;
+    }
+  }
+
+  return null;
+};
+
+const TabUsers = ({ currentUser, canManageUsers: canManageUsersProp }) => {
   const navigate = useNavigate();
+
+  const resolvedUser = useMemo(
+    () => currentUser || readStoredUser(),
+    [currentUser]
+  );
+
+  const userRoles = useMemo(
+    () => extractRoles(resolvedUser),
+    [resolvedUser]
+  );
+
+  const isSuperAdmin = useMemo(() => {
+    if (typeof canManageUsersProp === 'boolean') {
+      return canManageUsersProp;
+    }
+    if (!resolvedUser || userRoles.size === 0) return false;
+    return Array.from(userRoles).some((role) => USER_ADMIN_ROLES.has(role));
+  }, [canManageUsersProp, resolvedUser, userRoles]);
 
   const [users, setUsers] = useState([]);
   const [totalElements, setTotalElements] = useState(0);
@@ -17,7 +136,7 @@ const TabUsers = ({ currentUser }) => {
     page: 0,
     size: 10,
     sortBy: 'createdAt',
-    direction: 'DESC'
+    direction: 'DESC',
   });
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -26,11 +145,12 @@ const TabUsers = ({ currentUser }) => {
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
 
-  // Fetch danh sách người dùng
   const fetchUsers = useCallback(async () => {
+    if (!isSuperAdmin) return;
+
     try {
       const res = await axiosClient.get('/users', {
-        params: searchParams
+        params: searchParams,
       });
 
       const data = res.data?.data ?? res.data;
@@ -42,37 +162,36 @@ const TabUsers = ({ currentUser }) => {
     } catch (err) {
       console.error('Lỗi tải danh sách người dùng:', err);
     }
-  }, [searchParams]);
+  }, [isSuperAdmin, searchParams]);
 
   useEffect(() => {
-    if (currentUser) {
+    if (isSuperAdmin) {
       fetchUsers();
     }
-  }, [currentUser, fetchUsers]);
+  }, [isSuperAdmin, fetchUsers]);
 
-  // Kiểm tra quyền thao tác user
-  const canManageUser = (targetUser) => {
-    if (!currentUser || !targetUser) return false;
+  const canManageUser = useCallback((targetUser) => {
+    if (!isSuperAdmin || !resolvedUser || !targetUser) return false;
     if (targetUser.username === 'admin') return false;
-    if (targetUser.id === currentUser.id) return false;
+    if (resolvedUser.id && targetUser.id && targetUser.id === resolvedUser.id) return false;
+    if (resolvedUser.username && targetUser.username && targetUser.username === resolvedUser.username) return false;
 
-    const isTargetSuperAdmin =
-      targetUser.roleName === 'ROLE_SUPER_ADMIN' ||
-      targetUser.roleName === 'SUPER_ADMIN';
+    const targetRoles = extractRoles(targetUser);
+    const isTargetSuperAdmin = targetRoles.has('ROLE_SUPER_ADMIN');
 
-    if (isTargetSuperAdmin && currentUser.username !== 'admin') {
+    if (isTargetSuperAdmin && resolvedUser.username !== 'admin') {
       return false;
     }
 
     return true;
-  };
+  }, [isSuperAdmin, resolvedUser]);
 
-  // Tìm kiếm
   const handleSearch = () => {
+    if (!isSuperAdmin) return;
     setSearchParams((prev) => ({
       ...prev,
       keyword: keyword.trim(),
-      page: 0
+      page: 0,
     }));
   };
 
@@ -80,8 +199,8 @@ const TabUsers = ({ currentUser }) => {
     if (e.key === 'Enter') handleSearch();
   };
 
-  // Sắp xếp
   const handleSort = (field) => {
+    if (!isSuperAdmin) return;
     setSearchParams((prev) => ({
       ...prev,
       sortBy: field,
@@ -89,7 +208,7 @@ const TabUsers = ({ currentUser }) => {
         prev.sortBy === field && prev.direction === 'ASC'
           ? 'DESC'
           : 'ASC',
-      page: 0
+      page: 0,
     }));
   };
 
@@ -103,11 +222,12 @@ const TabUsers = ({ currentUser }) => {
       : <span style={{ marginLeft: '4px' }}>↓</span>;
   };
 
-  // Chọn user
   const getSelectableUsers = () =>
     users.filter((u) => canManageUser(u));
 
   const handleSelectAll = (e) => {
+    if (!isSuperAdmin) return;
+
     setSelectedIds(
       e.target.checked
         ? getSelectableUsers().map((u) => u.id)
@@ -118,7 +238,7 @@ const TabUsers = ({ currentUser }) => {
   const handleSelectOne = (e, user) => {
     e.stopPropagation();
 
-    if (!canManageUser(user)) return;
+    if (!isSuperAdmin || !canManageUser(user)) return;
 
     setSelectedIds((prev) =>
       prev.includes(user.id)
@@ -127,16 +247,15 @@ const TabUsers = ({ currentUser }) => {
     );
   };
 
-  // Lấy danh sách user hợp lệ được chọn
   const getTargetIds = () =>
     selectedIds.filter((id) => {
       const user = users.find((u) => u.id === id);
       return user && canManageUser(user);
     });
 
-  // Xóa nhiều user
   const handleBulkDelete = async () => {
     setIsDropdownOpen(false);
+    if (!isSuperAdmin) return;
 
     const targetIds = getTargetIds();
 
@@ -151,7 +270,7 @@ const TabUsers = ({ currentUser }) => {
 
     try {
       await axiosClient.delete('/users', {
-        data: targetIds
+        data: targetIds,
       });
 
       await fetchUsers();
@@ -160,9 +279,9 @@ const TabUsers = ({ currentUser }) => {
     }
   };
 
-  // Active / Deactive nhiều user
   const handleBulkStatusChange = async (isActive) => {
     setIsDropdownOpen(false);
+    if (!isSuperAdmin) return;
 
     const targetIds = getTargetIds();
 
@@ -193,11 +312,10 @@ const TabUsers = ({ currentUser }) => {
     }
   };
 
-  // Tải file Excel
   const downloadExcel = (data, fileName) => {
     const url = window.URL.createObjectURL(
       new Blob([data], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
     );
 
@@ -212,13 +330,13 @@ const TabUsers = ({ currentUser }) => {
     window.URL.revokeObjectURL(url);
   };
 
-  // Export user
   const handleExport = async () => {
     setIsDropdownOpen(false);
+    if (!isSuperAdmin) return;
 
     try {
       const res = await axiosClient.get('/auth/export', {
-        responseType: 'blob'
+        responseType: 'blob',
       });
 
       downloadExcel(res.data, 'users.xlsx');
@@ -228,11 +346,12 @@ const TabUsers = ({ currentUser }) => {
     }
   };
 
-  // Tải file template
   const handleDownloadTemplate = async () => {
+    if (!isSuperAdmin) return;
+
     try {
       const res = await axiosClient.get('/auth/import/template', {
-        responseType: 'blob'
+        responseType: 'blob',
       });
 
       downloadExcel(res.data, 'users-import-template.xlsx');
@@ -242,9 +361,9 @@ const TabUsers = ({ currentUser }) => {
     }
   };
 
-  // Import user
   const handleImport = async (e) => {
     e.preventDefault();
+    if (!isSuperAdmin) return;
 
     if (!importFile) {
       alert('Vui lòng chọn file Excel!');
@@ -253,7 +372,6 @@ const TabUsers = ({ currentUser }) => {
 
     const formData = new FormData();
     formData.append('file', importFile);
-    
 
     try {
       setImporting(true);
@@ -266,7 +384,7 @@ const TabUsers = ({ currentUser }) => {
         result.totalRows !== undefined && `Tổng số dòng: ${result.totalRows}`,
         result.successCount !== undefined && `Thành công: ${result.successCount}`,
         result.failedCount !== undefined && `Thất bại: ${result.failedCount}`,
-        result.skippedCount !== undefined && `Bỏ qua: ${result.skippedCount}`
+        result.skippedCount !== undefined && `Bỏ qua: ${result.skippedCount}`,
       ].filter(Boolean).join('\n');
 
       alert(message);
@@ -282,21 +400,22 @@ const TabUsers = ({ currentUser }) => {
     }
   };
 
-  // Xem chi tiết user
   const handleRowClick = (userId) => {
+    if (!isSuperAdmin) return;
     navigate(`/users/${userId}`);
   };
 
-  const isSuperAdmin =
-    currentUser?.roleName === 'ROLE_SUPER_ADMIN' ||
-    currentUser?.roleName === 'SUPER_ADMIN';
-
   if (!isSuperAdmin) {
     return (
-      <div className="permission-message">
-        Bạn đang đăng nhập với quyền User thông thường,
-        không có quyền xem quản lý tài khoản.
-      </div>
+      <section className="dashboard-section">
+        <div className="permission-denied-box">
+          <div className="permission-denied-icon">!</div>
+          <h3 className="permission-denied-title">Không có quyền truy cập</h3>
+          <p className="permission-message">
+            Bạn không có quyền xem hoặc thao tác với danh sách tài khoản người dùng. Chỉ vai trò SUPER_ADMIN mới được phép truy cập mục này.
+          </p>
+        </div>
+      </section>
     );
   }
 
@@ -308,8 +427,6 @@ const TabUsers = ({ currentUser }) => {
 
   return (
     <section className="dashboard-section">
-
-      {/* TOOLBAR */}
       <div className="user-toolbar">
         <div className="search-container">
           <input
@@ -327,17 +444,16 @@ const TabUsers = ({ currentUser }) => {
         </div>
 
         <div className="device-actions">
-
-          {/* Nút thêm người dùng riêng */}
           <button
+            type="button"
             className="add-device-button"
             onClick={() => navigate('/register')}
           >
             + Thêm Người Dùng
           </button>
 
-          {/* Dropdown thao tác hàng loạt */}
           <button
+            type="button"
             className="device-action-dropdown-button"
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             title="Thao tác hàng loạt"
@@ -347,8 +463,8 @@ const TabUsers = ({ currentUser }) => {
 
           {isDropdownOpen && (
             <div className="device-dropdown">
-
               <button
+                type="button"
                 className="device-dropdown-item"
                 onClick={() => handleBulkStatusChange(true)}
               >
@@ -357,6 +473,7 @@ const TabUsers = ({ currentUser }) => {
               </button>
 
               <button
+                type="button"
                 className="device-dropdown-item"
                 onClick={() => handleBulkStatusChange(false)}
               >
@@ -365,6 +482,7 @@ const TabUsers = ({ currentUser }) => {
               </button>
 
               <button
+                type="button"
                 className="device-dropdown-item delete-item"
                 onClick={handleBulkDelete}
               >
@@ -373,6 +491,7 @@ const TabUsers = ({ currentUser }) => {
               </button>
 
               <button
+                type="button"
                 className="device-dropdown-item"
                 onClick={() => {
                   setIsDropdownOpen(false);
@@ -384,18 +503,17 @@ const TabUsers = ({ currentUser }) => {
               </button>
 
               <button
+                type="button"
                 className="device-dropdown-item"
                 onClick={handleExport}
               >
                 📤 Xuất file user
               </button>
-
             </div>
           )}
         </div>
       </div>
 
-      {/* USER TABLE */}
       <div className="user-table-wrapper">
         <table className="user-table">
           <thead>
@@ -466,7 +584,7 @@ const TabUsers = ({ currentUser }) => {
                           style={{
                             color: '#ef4444',
                             fontWeight: 'bold',
-                            marginLeft: '4px'
+                            marginLeft: '4px',
                           }}
                           title="Chưa xác thực email"
                         >
@@ -497,7 +615,6 @@ const TabUsers = ({ currentUser }) => {
         </table>
       </div>
 
-      {/* PAGINATION */}
       {totalPages > 1 && (
         <div
           style={{
@@ -505,7 +622,7 @@ const TabUsers = ({ currentUser }) => {
             alignItems: 'center',
             justifyContent: 'space-between',
             marginTop: '16px',
-            fontSize: '13.5px'
+            fontSize: '13.5px',
           }}
         >
           <span>
@@ -518,7 +635,7 @@ const TabUsers = ({ currentUser }) => {
               onClick={() =>
                 setSearchParams((prev) => ({
                   ...prev,
-                  page: prev.page - 1
+                  page: prev.page - 1,
                 }))
               }
               style={{
@@ -526,7 +643,7 @@ const TabUsers = ({ currentUser }) => {
                 borderRadius: '6px',
                 border: '1px solid var(--border-light)',
                 cursor: searchParams.page === 0 ? 'not-allowed' : 'pointer',
-                opacity: searchParams.page === 0 ? 0.5 : 1
+                opacity: searchParams.page === 0 ? 0.5 : 1,
               }}
             >
               Trang trước
@@ -541,7 +658,7 @@ const TabUsers = ({ currentUser }) => {
               onClick={() =>
                 setSearchParams((prev) => ({
                   ...prev,
-                  page: prev.page + 1
+                  page: prev.page + 1,
                 }))
               }
               style={{
@@ -549,7 +666,7 @@ const TabUsers = ({ currentUser }) => {
                 borderRadius: '6px',
                 border: '1px solid var(--border-light)',
                 cursor: searchParams.page + 1 >= totalPages ? 'not-allowed' : 'pointer',
-                opacity: searchParams.page + 1 >= totalPages ? 0.5 : 1
+                opacity: searchParams.page + 1 >= totalPages ? 0.5 : 1,
               }}
             >
               Trang sau
@@ -558,7 +675,6 @@ const TabUsers = ({ currentUser }) => {
         </div>
       )}
 
-      {/* IMPORT MODAL */}
       {showImport && (
         <div className="import-modal-overlay">
           <div className="import-modal">
@@ -603,7 +719,6 @@ const TabUsers = ({ currentUser }) => {
           </div>
         </div>
       )}
-
     </section>
   );
 };

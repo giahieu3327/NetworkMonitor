@@ -4,6 +4,103 @@ import { axiosClient } from '../../api/axiosClient';
 import '../../styles/common.css';
 import './CreateRulePage.css';
 
+const RULE_MANAGE_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
+const extractRoles = (source) => {
+  const rolesSet = new Set();
+  if (!source) return rolesSet;
+
+  const pushRole = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach((item) => pushRole(item));
+      return;
+    }
+    if (typeof val === 'string') {
+      val
+        .split(/[\s,]+/)
+        .map((r) => normalizeRole(r))
+        .filter(Boolean)
+        .forEach((r) => rolesSet.add(r));
+    } else if (typeof val === 'object') {
+      pushRole(val.roleName || val.name || val.authority || val.role);
+    }
+  };
+
+  pushRole(source.roleName);
+  pushRole(source.roles);
+  pushRole(source.authorities);
+  pushRole(source.scope);
+
+  return rolesSet;
+};
+
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const jsonStr = decodeURIComponent(
+      atob(padded)
+        .split('')
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join('')
+    );
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+};
+
+const readStoredUser = () => {
+  try {
+    const rawUser = localStorage.getItem('current_user');
+    if (rawUser) {
+      return JSON.parse(rawUser);
+    }
+  } catch {
+  }
+
+  const storedRole = localStorage.getItem('user_role');
+  let storedRoles = [];
+  try {
+    const rawRoles = localStorage.getItem('user_roles');
+    if (rawRoles) {
+      const parsed = JSON.parse(rawRoles);
+      if (Array.isArray(parsed)) storedRoles = parsed;
+    }
+  } catch {
+  }
+
+  if (storedRole || storedRoles.length > 0) {
+    return {
+      roleName: storedRole || '',
+      roles: storedRoles,
+    };
+  }
+
+  const accessToken = localStorage.getItem('access_token');
+  if (accessToken) {
+    const claims = decodeJwtPayload(accessToken);
+    if (claims) {
+      return claims;
+    }
+  }
+
+  return null;
+};
+
 const initialForm = {
   metricType: '',
   warningLimit: '',
@@ -12,12 +109,21 @@ const initialForm = {
   isEnabled: true,
 };
 
-const CreateRulePage = () => {
+const CreateRulePage = ({
+  currentUser: currentUserProp,
+  canManageDevices: canManageDevicesProp,
+  canManageRules: canManageRulesProp,
+}) => {
   const { deviceId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
 
   const device = location.state?.device || null;
+  const initialUser =
+    currentUserProp || location.state?.currentUser || readStoredUser();
+
+  const [resolvedUser, setResolvedUser] = useState(initialUser);
+  const [checkingPermission, setCheckingPermission] = useState(true);
 
   const [formData, setFormData] = useState(initialForm);
   const [allowedMetrics, setAllowedMetrics] = useState([]);
@@ -38,12 +144,83 @@ const CreateRulePage = () => {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const verifyPermission = async () => {
+      const accessToken = localStorage.getItem('access_token');
+      if (!accessToken) {
+        if (isMounted) {
+          setResolvedUser(null);
+          setCheckingPermission(false);
+        }
+        return;
+      }
+
+      try {
+        const res = await axiosClient.get('/profile/me');
+        const profileData = res.data?.data ?? res.data ?? null;
+        if (isMounted) {
+          setResolvedUser(profileData);
+        }
+      } catch {
+        if (isMounted) {
+          setResolvedUser(
+            currentUserProp || location.state?.currentUser || readStoredUser()
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setCheckingPermission(false);
+        }
+      }
+    };
+
+    verifyPermission();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserProp, location.state?.currentUser]);
+
+  const userRoles = useMemo(
+    () => extractRoles(resolvedUser),
+    [resolvedUser]
+  );
+
+  const canManageRules = useMemo(() => {
+    if (typeof canManageRulesProp === 'boolean') {
+      return canManageRulesProp;
+    }
+    if (typeof canManageDevicesProp === 'boolean') {
+      return canManageDevicesProp;
+    }
+    if (!resolvedUser || userRoles.size === 0) {
+      return false;
+    }
+    return Array.from(userRoles).some((role) =>
+      RULE_MANAGE_ROLES.has(role)
+    );
+  }, [
+    canManageRulesProp,
+    canManageDevicesProp,
+    resolvedUser,
+    userRoles,
+  ]);
+
+  useEffect(() => {
     if (!deviceId || !Number.isInteger(Number(deviceId)) || Number(deviceId) <= 0) {
       setErrorMsg('Không tìm thấy thiết bị cần tạo luật cảnh báo.');
     }
   }, [deviceId]);
 
   useEffect(() => {
+    if (checkingPermission) return;
+
+    if (!canManageRules) {
+      setLoadingMetrics(false);
+      return;
+    }
+
     const fetchAllowedMetrics = async () => {
       if (!deviceId) return;
 
@@ -62,7 +239,6 @@ const CreateRulePage = () => {
           }));
         }
       } catch (err) {
-        console.error('Lỗi tải danh sách allowed metrics:', err);
         setErrorMsg(
           err.response?.data?.message ||
             'Không thể tải danh sách Metric Type hợp lệ.'
@@ -73,7 +249,7 @@ const CreateRulePage = () => {
     };
 
     fetchAllowedMetrics();
-  }, [deviceId]);
+  }, [deviceId, checkingPermission, canManageRules]);
 
   const selectedMetricMeta = useMemo(
     () =>
@@ -88,7 +264,7 @@ const CreateRulePage = () => {
         state: { activeTab: 'rules' },
       });
     } else {
-      navigate(-1);
+      navigate('/dashboard');
     }
   };
 
@@ -158,6 +334,8 @@ const CreateRulePage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (checkingPermission || !canManageRules) return;
+
     setErrorMsg('');
 
     const validationError = validateForm();
@@ -192,6 +370,45 @@ const CreateRulePage = () => {
 
   const deviceTitle =
     device?.deviceName || device?.name || `Mã thiết bị: ${deviceId}`;
+
+  if (checkingPermission) {
+    return (
+      <div className={`create-rule-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+        <div className="button-loading-state" style={{ color: 'var(--primary)' }}>
+          <span
+            className="spinner"
+            style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }}
+          />
+          Đang kiểm tra quyền truy cập...
+        </div>
+      </div>
+    );
+  }
+
+  if (!canManageRules) {
+    return (
+      <div className={`create-rule-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+        <div className="create-rule-card">
+          <div className="permission-denied-box">
+            <div className="permission-denied-icon">!</div>
+            <h2 className="permission-denied-title">Không có quyền truy cập</h2>
+            <p className="permission-message">
+              Bạn không có quyền tạo luật cảnh báo cho thiết bị này. Chỉ tài khoản có vai trò SUPER_ADMIN, NETWORK_ADMIN hoặc NOC_OPERATOR mới được phép truy cập trang này.
+            </p>
+          </div>
+          <div className="create-rule-actions">
+            <button
+              type="button"
+              className="cancel-btn"
+              onClick={handleBack}
+            >
+              Quay lại
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`create-rule-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>

@@ -5,8 +5,80 @@ import './TabDeviceOidConfig.css';
 
 const PAGE_SIZE = 10;
 
-const TabDeviceOidConfig = ({ deviceId, device }) => {
+const ALLOWED_VIEW_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+  'ROLE_GUEST_VIEWER',
+]);
+
+const OID_CONFIG_MANAGE_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+]);
+
+const OID_CONFIG_EXPORT_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
+const TabDeviceOidConfig = ({
+  deviceId,
+  device,
+  currentUser,
+  canManageDevices: canManageDevicesProp,
+  canExportReports: canExportReportsProp,
+}) => {
   const navigate = useNavigate();
+
+  const userRoles = useMemo(() => {
+    const roles = new Set();
+
+    if (currentUser?.roleName) {
+      roles.add(normalizeRole(currentUser.roleName));
+    }
+
+    if (Array.isArray(currentUser?.roles)) {
+      currentUser.roles.forEach((role) => {
+        const normalized = normalizeRole(role);
+        if (normalized) roles.add(normalized);
+      });
+    }
+
+    return roles;
+  }, [currentUser]);
+
+  const canViewOidConfigs = useMemo(() => {
+    if (!currentUser) return true;
+    return Array.from(userRoles).some((role) => ALLOWED_VIEW_ROLES.has(role));
+  }, [currentUser, userRoles]);
+
+  const canManageOidConfigs = useMemo(() => {
+    if (typeof canManageDevicesProp === 'boolean') {
+      return canManageDevicesProp;
+    }
+    return Array.from(userRoles).some((role) =>
+      OID_CONFIG_MANAGE_ROLES.has(role)
+    );
+  }, [canManageDevicesProp, userRoles]);
+
+  const canExportOidConfigs = useMemo(() => {
+    if (typeof canExportReportsProp === 'boolean') {
+      return canExportReportsProp;
+    }
+    return Array.from(userRoles).some((role) =>
+      OID_CONFIG_EXPORT_ROLES.has(role)
+    );
+  }, [canExportReportsProp, userRoles]);
 
   const [oidConfigs, setOidConfigs] = useState([]);
   const [totalElements, setTotalElements] = useState(0);
@@ -30,7 +102,7 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
   const [importing, setImporting] = useState(false);
 
   const fetchOidConfigs = useCallback(async () => {
-    if (!deviceId) return;
+    if (!deviceId || !canViewOidConfigs) return;
 
     try {
       const res = await axiosClient.get(
@@ -70,13 +142,15 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
           'Không thể tải danh sách cấu hình OID!'
       );
     }
-  }, [deviceId, searchParams]);
+  }, [deviceId, canViewOidConfigs, searchParams]);
 
   useEffect(() => {
     fetchOidConfigs();
   }, [fetchOidConfigs]);
 
   const handleNavigateCreate = () => {
+    if (!canManageOidConfigs) return;
+
     navigate(`/devices/${deviceId}/oid-configs/create`, {
       state: { device },
     });
@@ -185,6 +259,8 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
   };
 
   const handleSelectAll = (e) => {
+    if (!canManageOidConfigs) return;
+
     setSelectedIds(
       e.target.checked
         ? oidConfigs.map((oidConfig) => oidConfig.id)
@@ -194,6 +270,7 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
 
   const handleSelectOne = (e, oidConfig) => {
     e.stopPropagation();
+    if (!canManageOidConfigs) return;
 
     setSelectedIds((prev) =>
       prev.includes(oidConfig.id)
@@ -210,6 +287,7 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
 
   const handleBulkDelete = async () => {
     setIsDropdownOpen(false);
+    if (!canManageOidConfigs) return;
 
     if (selectedIds.length === 0) {
       alert('Vui lòng chọn cấu hình OID cần xóa!');
@@ -274,6 +352,7 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
 
   const handleExport = async () => {
     setIsDropdownOpen(false);
+    if (!canExportOidConfigs) return;
 
     try {
       const res = await axiosClient.get('/oid-configs/export', {
@@ -293,6 +372,8 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
   };
 
   const handleDownloadTemplate = async () => {
+    if (!canManageOidConfigs) return;
+
     try {
       const res = await axiosClient.get(
         '/oid-configs/import/template',
@@ -317,6 +398,7 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
 
   const handleImport = async (e) => {
     e.preventDefault();
+    if (!canManageOidConfigs) return;
 
     if (!importFile) {
       alert('Vui lòng chọn file Excel!');
@@ -407,6 +489,14 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
     return <span>UNKNOWN</span>;
   };
 
+  if (!canViewOidConfigs) {
+    return (
+      <div className="permission-message">
+        Bạn không có quyền xem cấu hình OID của thiết bị này.
+      </div>
+    );
+  }
+
   const startItem = totalElements === 0 ? 0 : searchParams.page * PAGE_SIZE + 1;
   const endItem = Math.min((searchParams.page + 1) * PAGE_SIZE, totalElements);
 
@@ -443,78 +533,94 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
           </button>
         </div>
 
-        <div className="device-actions">
-          <button
-            type="button"
-            className="add-device-button"
-            onClick={handleNavigateCreate}
-          >
-            + Thêm OID
-          </button>
+        {canManageOidConfigs ? (
+          <div className="device-actions">
+            <button
+              type="button"
+              className="add-device-button"
+              onClick={handleNavigateCreate}
+            >
+              + Thêm OID
+            </button>
 
-          <button
-            type="button"
-            className="device-action-dropdown-button"
-            onClick={() =>
-              setIsDropdownOpen((prev) => !prev)
-            }
-            title="Thao tác cấu hình OID"
-          >
-            ▾
-          </button>
+            <button
+              type="button"
+              className="device-action-dropdown-button"
+              onClick={() =>
+                setIsDropdownOpen((prev) => !prev)
+              }
+              title="Thao tác cấu hình OID"
+            >
+              ▾
+            </button>
 
-          {isDropdownOpen && (
-            <div className="device-dropdown">
-              <button
-                type="button"
-                className="device-dropdown-item delete-item"
-                onClick={handleBulkDelete}
-              >
-                🗑️ Xóa OID
-                {selectedIds.length > 0 &&
-                  ` (${selectedIds.length})`}
-              </button>
+            {isDropdownOpen && (
+              <div className="device-dropdown">
+                <button
+                  type="button"
+                  className="device-dropdown-item delete-item"
+                  onClick={handleBulkDelete}
+                >
+                  🗑️ Xóa OID
+                  {selectedIds.length > 0 &&
+                    ` (${selectedIds.length})`}
+                </button>
 
-              <button
-                type="button"
-                className="device-dropdown-item"
-                onClick={() => {
-                  setIsDropdownOpen(false);
-                  setImportFile(null);
-                  setShowImport(true);
-                }}
-              >
-                📥 Thêm OID từ file
-              </button>
+                <button
+                  type="button"
+                  className="device-dropdown-item"
+                  onClick={() => {
+                    setIsDropdownOpen(false);
+                    setImportFile(null);
+                    setShowImport(true);
+                  }}
+                >
+                  📥 Thêm OID từ file
+                </button>
 
-              <button
-                type="button"
-                className="device-dropdown-item"
-                onClick={handleExport}
-              >
-                📤 Xuất file OID
-              </button>
-            </div>
-          )}
-        </div>
+                {canExportOidConfigs && (
+                  <button
+                    type="button"
+                    className="device-dropdown-item"
+                    onClick={handleExport}
+                  >
+                    📤 Xuất file OID
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          canExportOidConfigs && (
+            <button
+              type="button"
+              className="search-button"
+              onClick={handleExport}
+            >
+              📤 Xuất file OID
+            </button>
+          )
+        )}
       </div>
 
       <div className="user-table-wrapper">
         <table className="user-table">
           <thead>
             <tr>
-              <th
-                style={{
-                  width: '40px',
-                  textAlign: 'center',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isAllSelected}
-                  onChange={handleSelectAll}
-                />
-              </th>
+              {canManageOidConfigs && (
+                <th
+                  style={{
+                    width: '40px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={handleSelectAll}
+                  />
+                </th>
+              )}
 
               <th
                 onClick={() => handleSort('metricType')}
@@ -582,18 +688,20 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
                   className="clickable-row"
                   onClick={() => navigate(`/oid-configs/${oidConfig.id}`)}
                 >
-                  <td
-                    style={{ textAlign: 'center' }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(oidConfig.id)}
-                      onChange={(e) =>
-                        handleSelectOne(e, oidConfig)
-                      }
-                    />
-                  </td>
+                  {canManageOidConfigs && (
+                    <td
+                      style={{ textAlign: 'center' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(oidConfig.id)}
+                        onChange={(e) =>
+                          handleSelectOne(e, oidConfig)
+                        }
+                      />
+                    </td>
+                  )}
 
                   <td>{oidConfig.metricType || '—'}</td>
 
@@ -623,7 +731,7 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
             ) : (
               <tr>
                 <td
-                  colSpan="8"
+                  colSpan={canManageOidConfigs ? 8 : 7}
                   className="empty-user-table"
                 >
                   {searchParams.keyword
@@ -684,7 +792,7 @@ const TabDeviceOidConfig = ({ deviceId, device }) => {
         </div>
       )}
 
-      {showImport && (
+      {canManageOidConfigs && showImport && (
         <div className="import-modal-overlay">
           <div className="import-modal">
             <h3>Import danh sách cấu hình OID</h3>

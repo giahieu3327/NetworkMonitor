@@ -1,35 +1,105 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { axiosClient } from '../../api/axiosClient';
 
 import '../../styles/common.css';
 import './CreateDevicePage.css';
 
-const createDefaultCredential = (
-  protocolType = 'SNMPV2C',
-  credentialName = 'SNMP_Credential'
-) => ({
-  credentialName,
-  credentialType: 'SNMP',
-  protocolType,
-  communityString: '',
-  port: 161,
-  isActive: true,
-});
+const DEVICE_MANAGE_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+]);
 
-const validateOidConfigFile = (file) => {
-  if (!file) {
-    return 'Vui lòng chọn file OID Config!';
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
+const extractRoles = (source) => {
+  const rolesSet = new Set();
+  if (!source) return rolesSet;
+
+  const pushRole = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach((item) => pushRole(item));
+      return;
+    }
+    if (typeof val === 'string') {
+      val
+        .split(/[\s,]+/)
+        .map((r) => normalizeRole(r))
+        .filter(Boolean)
+        .forEach((r) => rolesSet.add(r));
+    } else if (typeof val === 'object') {
+      pushRole(val.roleName || val.name || val.authority || val.role);
+    }
+  };
+
+  pushRole(source.roleName);
+  pushRole(source.roles);
+  pushRole(source.authorities);
+  pushRole(source.scope);
+
+  return rolesSet;
+};
+
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const jsonStr = decodeURIComponent(
+      atob(padded)
+        .split('')
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join('')
+    );
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+};
+
+const readStoredUser = () => {
+  try {
+    const rawUser = localStorage.getItem('current_user');
+    if (rawUser) {
+      return JSON.parse(rawUser);
+    }
+  } catch {
   }
 
-  const extension = file.name.split('.').pop()?.toLowerCase();
-
-  if (!['xlsx', 'xls', 'csv'].includes(extension)) {
-    return 'Chỉ hỗ trợ file XLSX, XLS hoặc CSV!';
+  const storedRole = localStorage.getItem('user_role');
+  let storedRoles = [];
+  try {
+    const rawRoles = localStorage.getItem('user_roles');
+    if (rawRoles) {
+      const parsed = JSON.parse(rawRoles);
+      if (Array.isArray(parsed)) storedRoles = parsed;
+    }
+  } catch {
   }
 
-  return '';
+  if (storedRole || storedRoles.length > 0) {
+    return {
+      roleName: storedRole || '',
+      roles: storedRoles,
+    };
+  }
+
+  const accessToken = localStorage.getItem('access_token');
+  if (accessToken) {
+    const claims = decodeJwtPayload(accessToken);
+    if (claims) {
+      return claims;
+    }
+  }
+
+  return null;
 };
 
 const DeviceInfoSection = ({ device, onChange, disabled }) => {
@@ -54,10 +124,9 @@ const DeviceInfoSection = ({ device, onChange, disabled }) => {
   return (
     <section className="device-create-section">
       <div className="device-create-section-title">
-        <span className="device-step-number">1</span>
         <div>
           <h3>Thông tin thiết bị</h3>
-          <p>Nhập thông tin cơ bản của thiết bị mạng.</p>
+          <p>Nhập thông tin cơ bản của thiết bị mạng cần giám sát.</p>
         </div>
       </div>
 
@@ -86,187 +155,18 @@ const DeviceInfoSection = ({ device, onChange, disabled }) => {
   );
 };
 
-const CredentialSection = ({
-  credentials,
-  onChange,
-  onAdd,
-  onRemove,
-  disabled,
+const CreateDevicePage = ({
+  currentUser: currentUserProp,
+  canManageDevices: canManageDevicesProp,
 }) => {
-  const updateField = (index, field, value) => {
-    onChange((prev) =>
-      prev.map((item, i) =>
-        i === index ? { ...item, [field]: value } : item
-      )
-    );
-  };
-
-  return (
-    <section className="device-create-section">
-      <div className="device-create-section-title">
-        <span className="device-step-number">2</span>
-        <div>
-          <h3>Device Credentials</h3>
-          <p>Thiết lập một hoặc nhiều thông tin xác thực SNMP.</p>
-        </div>
-      </div>
-
-      {credentials.map((credential, index) => (
-        <div className="device-credential-card" key={index}>
-          <div className="device-credential-header">
-            <div className="device-credential-heading">
-              <strong>Credential {index + 1}</strong>
-              <span className="credential-protocol-badge">
-                {credential.protocolType}
-              </span>
-            </div>
-
-            {credentials.length > 1 && (
-              <button
-                type="button"
-                className="credential-remove-button"
-                onClick={() => onRemove(index)}
-                disabled={disabled}
-              >
-                Xóa
-              </button>
-            )}
-          </div>
-
-          <div className="form-grid">
-            <div className="form-group">
-              <label>Credential Name *</label>
-              <input
-                value={credential.credentialName}
-                onChange={(e) =>
-                  updateField(index, 'credentialName', e.target.value)
-                }
-                placeholder="SNMP_Cisco_V2"
-                disabled={disabled}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Credential Type *</label>
-              <select
-                className="role-select"
-                value={credential.credentialType}
-                onChange={(e) =>
-                  updateField(index, 'credentialType', e.target.value)
-                }
-                disabled={disabled}
-              >
-                <option value="SNMP">SNMP</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Protocol Type *</label>
-              <select
-                className="role-select"
-                value={credential.protocolType}
-                onChange={(e) =>
-                  updateField(index, 'protocolType', e.target.value)
-                }
-                disabled={disabled}
-              >
-                <option value="SNMPV1">SNMPV1</option>
-                <option value="SNMPV2C">SNMPV2C</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Community String *</label>
-              <input
-                value={credential.communityString}
-                onChange={(e) =>
-                  updateField(index, 'communityString', e.target.value)
-                }
-                placeholder="Nhập Community String"
-                disabled={disabled}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Port *</label>
-              <input
-                type="number"
-                min="1"
-                max="65535"
-                value={credential.port}
-                onChange={(e) =>
-                  updateField(index, 'port', e.target.value)
-                }
-                disabled={disabled}
-                required
-              />
-            </div>
-
-            <div className="form-group device-checkbox-group">
-              <label>Is Active</label>
-              <label className="checkbox-group">
-                <input
-                  type="checkbox"
-                  checked={credential.isActive}
-                  onChange={(e) =>
-                    updateField(index, 'isActive', e.target.checked)
-                  }
-                  disabled={disabled}
-                />
-                <span>Cho phép sử dụng Credential</span>
-              </label>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      <button
-        type="button"
-        className="credential-add-button"
-        onClick={onAdd}
-        disabled={disabled}
-      >
-        + Thêm Credential
-      </button>
-    </section>
-  );
-};
-
-const OidConfigSection = ({ file, onChange, disabled }) => (
-  <section className="device-create-section">
-    <div className="device-create-section-title">
-      <span className="device-step-number">3</span>
-      <div>
-        <h3>OID Config</h3>
-        <p>Chọn file chứa danh sách OID cần giám sát.</p>
-      </div>
-    </div>
-
-    <label className="device-oid-upload">
-      <input
-        type="file"
-        accept=".xlsx,.xls,.csv"
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.files?.[0] || null)}
-      />
-
-      <span className="device-oid-upload-icon">↑</span>
-
-      <strong>{file ? file.name : 'Chọn file OID Config'}</strong>
-
-      <span>
-        {file
-          ? `${(file.size / 1024).toFixed(1)} KB`
-          : 'Nhấn để chọn file XLSX, XLS hoặc CSV'}
-      </span>
-    </label>
-  </section>
-);
-
-const CreateDevicePage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const initialUser =
+    currentUserProp || location.state?.currentUser || readStoredUser();
+
+  const [resolvedUser, setResolvedUser] = useState(initialUser);
+  const [checkingPermission, setCheckingPermission] = useState(true);
 
   const [isDarkMode, setIsDarkMode] = useState(
     window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -281,13 +181,6 @@ const CreateDevicePage = () => {
     deviceType: '',
   });
 
-  const [credentialForms, setCredentialForms] = useState([
-    createDefaultCredential('SNMPV2C', 'SNMP_Credential_V2'),
-    createDefaultCredential('SNMPV1', 'SNMP_Credential_V1'),
-  ]);
-
-  const [oidConfigFile, setOidConfigFile] = useState(null);
-
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -298,25 +191,67 @@ const CreateDevicePage = () => {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const verifyPermission = async () => {
+      const accessToken = localStorage.getItem('access_token');
+      if (!accessToken) {
+        if (isMounted) {
+          setResolvedUser(null);
+          setCheckingPermission(false);
+        }
+        return;
+      }
+
+      try {
+        const res = await axiosClient.get('/profile/me');
+        const profileData = res.data?.data ?? res.data ?? null;
+        if (isMounted) {
+          setResolvedUser(profileData);
+        }
+      } catch {
+        if (isMounted) {
+          setResolvedUser(
+            currentUserProp || location.state?.currentUser || readStoredUser()
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setCheckingPermission(false);
+        }
+      }
+    };
+
+    verifyPermission();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserProp, location.state?.currentUser]);
+
+  const userRoles = useMemo(
+    () => extractRoles(resolvedUser),
+    [resolvedUser]
+  );
+
+  const canManageDevices = useMemo(() => {
+    if (typeof canManageDevicesProp === 'boolean') {
+      return canManageDevicesProp;
+    }
+    if (!resolvedUser || userRoles.size === 0) {
+      return false;
+    }
+    return Array.from(userRoles).some((role) =>
+      DEVICE_MANAGE_ROLES.has(role)
+    );
+  }, [canManageDevicesProp, resolvedUser, userRoles]);
+
   const handleDeviceChange = (e) => {
     const { name, value } = e.target;
 
     setDeviceForm((prev) => ({ ...prev, [name]: value }));
     setErrorMsg('');
-  };
-
-  const handleAddCredential = () => {
-    setCredentialForms((prev) => [
-      ...prev,
-      createDefaultCredential(
-        'SNMPV2C',
-        `SNMP_Credential_${prev.length + 1}`
-      ),
-    ]);
-  };
-
-  const handleRemoveCredential = (index) => {
-    setCredentialForms((prev) => prev.filter((_, i) => i !== index));
   };
 
   const validateForm = () => {
@@ -326,40 +261,13 @@ const CreateDevicePage = () => {
       return 'Vui lòng nhập đầy đủ thông tin thiết bị!';
     }
 
-    if (!credentialForms.length) {
-      return 'Vui lòng thêm ít nhất một Credential!';
-    }
-
-    for (const [index, credential] of credentialForms.entries()) {
-      const number = index + 1;
-
-      if (
-        !credential.credentialName.trim() ||
-        !credential.credentialType ||
-        !credential.protocolType ||
-        !credential.communityString.trim()
-      ) {
-        return `Vui lòng nhập đầy đủ thông tin Credential ${number}!`;
-      }
-
-      const port = Number(credential.port);
-
-      if (!Number.isInteger(port) || port < 1 || port > 65535) {
-        return `Port của Credential ${number} phải là số nguyên từ 1 đến 65535!`;
-      }
-    }
-
-    const fileError = validateOidConfigFile(oidConfigFile);
-
-    if (fileError) {
-      return fileError;
-    }
-
     return '';
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (checkingPermission || !canManageDevices) return;
+
     setErrorMsg('');
 
     const validationError = validateForm();
@@ -369,83 +277,91 @@ const CreateDevicePage = () => {
       return;
     }
 
-    let currentStep = 'Tạo thiết bị';
-
     try {
       setAdding(true);
 
-      const deviceRes = await axiosClient.post('/devices', {
+      const res = await axiosClient.post('/devices', {
         deviceName: deviceForm.deviceName.trim(),
         ipAddress: deviceForm.ipAddress.trim(),
         deviceType: deviceForm.deviceType.trim(),
       });
 
-      const deviceData = deviceRes.data?.data ?? deviceRes.data;
-      const deviceId = deviceData?.id ?? deviceData?.deviceId;
-      const numericDeviceId = Number(deviceId);
+      const apiRes = res.data;
 
-      if (!Number.isInteger(numericDeviceId) || numericDeviceId <= 0) {
-        throw new Error(`Device ID không hợp lệ: ${deviceId ?? 'không có'}`);
+      if (apiRes?.success === false) {
+        setErrorMsg(apiRes.message || 'Thêm thiết bị thất bại!');
+        return;
       }
 
-      for (const [index, credential] of credentialForms.entries()) {
-        currentStep = `Tạo Credential ${index + 1}`;
-
-        await axiosClient.post('/device-credentials', {
-          deviceId: numericDeviceId,
-          credentialName: credential.credentialName.trim(),
-          credentialType: credential.credentialType,
-          protocolType: credential.protocolType,
-          communityString: credential.communityString.trim(),
-          port: Number(credential.port),
-          isActive: credential.isActive,
-        });
-      }
-
-      currentStep = 'Import OID Config';
-
-      const formData = new FormData();
-      formData.append('file', oidConfigFile);
-
-      await axiosClient.post('/oid-configs/import', formData, {
-        params: {
-          deviceId: numericDeviceId,
-        },
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      alert(
-        'Thêm thiết bị thành công!\n\n' +
-          `Device ID: ${numericDeviceId}\n` +
-          `Đã tạo ${credentialForms.length} Credential.\n` +
-          'Đã import OID Config.'
-      );
+      alert(apiRes?.message || 'Đã gửi yêu cầu thêm thiết bị thành công!');
 
       navigate('/dashboard', {
         state: { refreshDevices: true },
       });
     } catch (err) {
-      console.error(`Lỗi tại bước ${currentStep}:`, err);
-
       const message =
         err.response?.data?.message ||
         err.message ||
         'Đã xảy ra lỗi không xác định.';
 
-      setErrorMsg(
-        `${currentStep} thất bại!\n${message}\n\n` +
-          'Lưu ý: Các bước đã hoàn thành trước đó không tự động được hoàn tác.'
-      );
+      setErrorMsg(message);
     } finally {
       setAdding(false);
     }
   };
 
   const handleCancel = () => {
-    if (!adding) navigate(-1);
+    if (!adding) {
+      navigate('/dashboard');
+    }
   };
+
+  if (checkingPermission) {
+    return (
+      <div
+        className={`register-page device-create-page device-create-loading-state ${
+          isDarkMode ? 'dark-mode' : 'light-mode'
+        }`}
+      >
+        <div className="button-loading-state" style={{ color: 'var(--primary)' }}>
+          <span
+            className="spinner"
+            style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }}
+          />
+          Đang kiểm tra quyền truy cập...
+        </div>
+      </div>
+    );
+  }
+
+  if (!canManageDevices) {
+    return (
+      <div
+        className={`register-page device-create-page ${
+          isDarkMode ? 'dark-mode' : 'light-mode'
+        }`}
+      >
+        <div className="register-card device-create-card">
+          <div className="permission-denied-box">
+            <div className="permission-denied-icon">!</div>
+            <h2 className="permission-denied-title">Không có quyền truy cập</h2>
+            <p className="permission-message">
+              Bạn không có quyền thêm thiết bị mới vào hệ thống. Chỉ tài khoản có vai trò SUPER_ADMIN hoặc NETWORK_ADMIN mới được phép truy cập trang này.
+            </p>
+          </div>
+          <div className="register-actions">
+            <button
+              type="button"
+              className="cancel-btn"
+              onClick={handleCancel}
+            >
+              Quay lại
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -467,8 +383,7 @@ const CreateDevicePage = () => {
           <h2 className="register-title">THÊM THIẾT BỊ MỚI</h2>
 
           <p className="device-create-description">
-            Thiết lập thông tin thiết bị, SNMP Credentials và danh sách OID
-            giám sát.
+            Tạo yêu cầu thêm thiết bị mạng mới vào hệ thống giám sát.
           </p>
         </div>
 
@@ -482,20 +397,6 @@ const CreateDevicePage = () => {
           <DeviceInfoSection
             device={deviceForm}
             onChange={handleDeviceChange}
-            disabled={adding}
-          />
-
-          <CredentialSection
-            credentials={credentialForms}
-            onChange={setCredentialForms}
-            onAdd={handleAddCredential}
-            onRemove={handleRemoveCredential}
-            disabled={adding}
-          />
-
-          <OidConfigSection
-            file={oidConfigFile}
-            onChange={setOidConfigFile}
             disabled={adding}
           />
 
@@ -514,7 +415,7 @@ const CreateDevicePage = () => {
               className="submit-btn"
               disabled={adding}
             >
-              {adding ? 'ĐANG TẠO THIẾT BỊ...' : '+ THÊM THIẾT BỊ'}
+              {adding ? 'ĐANG GỬI YÊU CẦU...' : '+ THÊM THIẾT BỊ'}
             </button>
           </div>
         </form>

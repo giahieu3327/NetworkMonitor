@@ -197,3 +197,58 @@ CHECK (
     breach_samples IS NULL
     OR jsonb_typeof(breach_samples) = 'array'
 );
+ALTER TABLE approval_tickets
+ADD CONSTRAINT chk_approval_tickets_entity_type
+CHECK (
+    entity_type IN (
+        'DEVICE',
+        'DEVICE_CREDENTIAL',
+        'OID_CONFIG',
+        'THRESHOLD_RULE'
+    )
+);
+
+ALTER TABLE approval_tickets
+ADD CONSTRAINT chk_approval_tickets_action_type
+CHECK (
+    action_type IN (
+        'CREATE',
+        'UPDATE',
+        'DELETE',
+        'BULK_IMPORT',
+        'BULK_DELETE'
+    )
+);
+
+ALTER TABLE approval_tickets
+ADD CONSTRAINT chk_approval_tickets_status
+CHECK (
+    status IN (
+        'PENDING',
+        'APPROVED',
+        'REJECTED',
+        'CANCELLED',
+        'FAILED'
+    )
+);
+
+ALTER TABLE approval_tickets
+ADD CONSTRAINT chk_approval_tickets_maker_checker
+CHECK (
+    checker_id IS NULL
+    OR checker_id <> maker_id
+);
+
+ALTER TABLE approval_tickets
+ADD CONSTRAINT chk_approval_tickets_reviewed_at
+CHECK (
+    reviewed_at IS NULL
+    OR reviewed_at >= created_at
+);
+
+ALTER TABLE approval_tickets
+ADD CONSTRAINT chk_approval_tickets_executed_at
+CHECK (
+    executed_at IS NULL
+    OR executed_at >= created_at
+);

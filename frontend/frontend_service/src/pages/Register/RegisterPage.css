@@ -82,7 +82,6 @@
   color: var(--text-primary-dark);
 }
 
-/* Custom Role Select */
 .role-select {
   width: 100%;
   height: 46px;
@@ -113,7 +112,6 @@
   box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
-/* Checkbox Styling */
 .checkbox-group {
   display: flex;
   align-items: center;
@@ -214,6 +212,59 @@
   color: #fca5a5;
   background-color: rgba(127, 29, 29, 0.25);
   border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.permission-denied-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 12px 8px;
+}
+
+.permission-denied-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.light-mode .permission-denied-icon {
+  color: #dc2626;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.dark-mode .permission-denied-icon {
+  color: #fca5a5;
+  background-color: rgba(127, 29, 29, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.permission-denied-title {
+  margin: 0 0 10px;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.light-mode .permission-denied-title {
+  color: #dc2626;
+}
+
+.dark-mode .permission-denied-title {
+  color: #fca5a5;
+}
+
+.permission-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  opacity: 0.9;
 }
 
 @media (max-width: 640px) {

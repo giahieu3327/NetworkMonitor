@@ -8,6 +8,7 @@ import com.network_monitor.portal_service.model.dto.request.ThresholdRuleRequest
 import com.network_monitor.portal_service.model.dto.response.AllowedMetricResponse;
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
 import com.network_monitor.portal_service.model.dto.response.ThresholdRuleResponse;
+import com.network_monitor.portal_service.model.entity.ApprovalTicket;
 import com.network_monitor.portal_service.model.entity.Device;
 import com.network_monitor.portal_service.model.entity.ThresholdRule;
 import com.network_monitor.portal_service.repository.DeviceRepository;
@@ -15,6 +16,7 @@ import com.network_monitor.portal_service.repository.ThresholdRuleRepository;
 import com.network_monitor.portal_service.service.IncidentService;
 import com.network_monitor.portal_service.service.ThresholdRuleService;
 import com.network_monitor.portal_service.util.SearchRequestUtils;
+import com.network_monitor.portal_service.workflow.ApprovalWorkflowService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
@@ -23,23 +25,29 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.connection.DataType;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.data.redis.connection.DataType;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 @Slf4j
@@ -58,6 +66,14 @@ public class ThresholdRuleServiceImpl implements ThresholdRuleService {
     private final IncidentService incidentService;
 
     private final ObjectMapper objectMapper;
+
+    private final ApprovalWorkflowService approvalWorkflowService;
+
+    private static final String ENTITY_TYPE = "THRESHOLD_RULE";
+
+    private static final String ADMIN_USERNAME = "admin";
+
+    private static final String SUPER_ADMIN_ROLE = "ROLE_SUPER_ADMIN";
 
     private static final String STREAK_REDIS_PREFIX =
             "network-monitor:threshold:streak:v2:";
@@ -244,10 +260,8 @@ public class ThresholdRuleServiceImpl implements ThresholdRuleService {
                 );
             }
 
-            OffsetDateTime now = OffsetDateTime.now();
-
-            ThresholdRule rule = ThresholdRule.builder()
-                    .device(device)
+            ThresholdRuleRequest normalizedPayload = ThresholdRuleRequest.builder()
+                    .deviceId(device.getId())
                     .metricType(normalizedMetric)
                     .warningLimit(request.getWarningLimit())
                     .criticalLimit(request.getCriticalLimit())
@@ -261,32 +275,46 @@ public class ThresholdRuleServiceImpl implements ThresholdRuleService {
                                     ? request.getIsEnabled()
                                     : true
                     )
-                    .createdAt(now)
-                    .updatedAt(now)
                     .build();
 
-            ThresholdRule saved = thresholdRuleRepository.saveAndFlush(rule);
+            if (isSuperAdminAccount()) {
+                ThresholdRule saved = insertRuleDirectly(device, normalizedPayload);
+                return ApiResponse.success(
+                        "Tạo ngưỡng cảnh báo thành công",
+                        toResponse(saved)
+                );
+            }
 
-            log.info(
-                    "Threshold rule created. ID: {}, Device ID: {}, Metric: {}",
-                    saved.getId(),
+            ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                    ENTITY_TYPE,
+                    "CREATE",
+                    null,
                     device.getId(),
-                    normalizedMetric
+                    "Tạo ngưỡng cảnh báo '" + normalizedMetric + "' cho thiết bị ID="
+                            + device.getId() + " (" + device.getDeviceName() + ")",
+                    null,
+                    normalizedPayload
             );
 
             return ApiResponse.success(
-                    "Threshold rule created successfully",
-                    toResponse(saved)
+                    "Đã gửi yêu cầu tạo ngưỡng cảnh báo (Ticket #" + ticket.getId() + "), đang chờ phê duyệt",
+                    null
             );
         } catch (Exception e) {
-            log.error("Failed to insert threshold rule", e);
-            return ApiResponse.error("Failed to insert threshold rule: " + e.getMessage());
+            log.error("Failed to create threshold rule", e);
+            return ApiResponse.error("Failed to create threshold rule: " + e.getMessage());
         }
     }
 
     @Override
+    @Transactional
     public ApiResponse<Map<String, Object>> createRulesFromExcel(Long deviceId, MultipartFile file) {
-        if (deviceId == null || !deviceRepository.existsById(deviceId)) {
+        if (deviceId == null) {
+            return ApiResponse.error("Device ID is required");
+        }
+
+        Device device = deviceRepository.findById(deviceId).orElse(null);
+        if (device == null) {
             return ApiResponse.error("Không tìm thấy thiết bị");
         }
 
@@ -294,12 +322,17 @@ public class ThresholdRuleServiceImpl implements ThresholdRuleService {
             return ApiResponse.error("File Excel không được để trống");
         }
 
+        boolean bypassApproval = isSuperAdminAccount();
+
         int totalRows = 0;
-        int successCount = 0;
+        int validCount = 0;
         int failedCount = 0;
         int skippedCount = 0;
 
+        List<ThresholdRuleRequest> validPayloads = new ArrayList<>();
         List<Map<String, Object>> errors = new ArrayList<>();
+        Set<String> seenMetricsInFile = new HashSet<>();
+        Set<String> deviceMetrics = getDeviceMetricsFromRedis(deviceId);
 
         try (InputStream input = file.getInputStream();
              Workbook workbook = WorkbookFactory.create(input)) {
@@ -323,24 +356,41 @@ public class ThresholdRuleServiceImpl implements ThresholdRuleService {
 
                 try {
                     ThresholdRuleRequest request = readRequestFromExcel(row, formatter);
-                    request.setDeviceId(deviceId);
-
-                    ApiResponse<ThresholdRuleResponse> response = insertRule(request);
-
-                    if (response != null && response.isSuccess()) {
-                        successCount++;
-                    } else {
-                        failedCount++;
-                        Map<String, Object> error = new LinkedHashMap<>();
-                        error.put("row", i + 1);
-                        error.put(
-                                "message",
-                                response == null
-                                        ? "Không thể tạo threshold rule"
-                                        : response.getMessage()
-                        );
-                        errors.add(error);
+                    String normalizedMetric = normalizeMetricKey(request.getMetricType());
+                    String validationError = validateRuleRequest(request, normalizedMetric);
+                    if (validationError != null) {
+                        throw new IllegalArgumentException(validationError);
                     }
+
+                    if (!deviceMetrics.isEmpty() && !deviceMetrics.contains(normalizedMetric)) {
+                        throw new IllegalArgumentException(
+                                "Metric '" + normalizedMetric + "' is not available for device " + deviceId
+                        );
+                    }
+
+                    if (!seenMetricsInFile.add(normalizedMetric)) {
+                        throw new IllegalArgumentException(
+                                "Trùng metric '" + normalizedMetric + "' trong cùng file Excel"
+                        );
+                    }
+
+                    if (thresholdRuleRepository.existsByDeviceIdAndMetricType(deviceId, normalizedMetric)) {
+                        throw new IllegalArgumentException(
+                                "Threshold rule already exists for device " + deviceId
+                                        + " and metric '" + normalizedMetric + "'"
+                        );
+                    }
+
+                    request.setDeviceId(deviceId);
+                    request.setMetricType(normalizedMetric);
+
+                    if (bypassApproval) {
+                        insertRuleDirectly(device, request);
+                    } else {
+                        validPayloads.add(request);
+                    }
+
+                    validCount++;
                 } catch (Exception e) {
                     failedCount++;
                     Map<String, Object> error = new LinkedHashMap<>();
@@ -349,19 +399,54 @@ public class ThresholdRuleServiceImpl implements ThresholdRuleService {
                     errors.add(error);
                 }
             }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("totalRows", totalRows);
+            result.put("successCount", validCount);
+            result.put("failedCount", failedCount);
+            result.put("skippedCount", skippedCount);
+            result.put("errors", errors);
+
+            if (bypassApproval) {
+                if (validCount == 0) {
+                    return ApiResponse.error("Không có dòng dữ liệu hợp lệ nào trong file Excel");
+                }
+                return ApiResponse.success(
+                        "Import " + validCount + " ngưỡng cảnh báo từ Excel thành công",
+                        result
+                );
+            }
+
+            Long ticketId = null;
+            if (!validPayloads.isEmpty()) {
+                ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                        ENTITY_TYPE,
+                        "BULK_IMPORT",
+                        null,
+                        deviceId,
+                        "Import " + validPayloads.size() + " ngưỡng cảnh báo từ Excel cho thiết bị ID="
+                                + deviceId + " (" + device.getDeviceName() + ")",
+                        null,
+                        validPayloads
+                );
+                ticketId = ticket.getId();
+            }
+
+            result.put("ticketId", ticketId);
+
+            if (validPayloads.isEmpty()) {
+                return ApiResponse.error("Không có dòng dữ liệu hợp lệ nào trong file Excel");
+            }
+
+            return ApiResponse.success(
+                    "Đã gửi yêu cầu import " + validPayloads.size()
+                            + " ngưỡng cảnh báo (Ticket #" + ticketId + "), đang chờ phê duyệt",
+                    result
+            );
         } catch (Exception e) {
             log.error("Import threshold rules from Excel failed: deviceId={}", deviceId, e);
             return ApiResponse.error(getErrorMessage(e));
         }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("totalRows", totalRows);
-        result.put("successCount", successCount);
-        result.put("failedCount", failedCount);
-        result.put("skippedCount", skippedCount);
-        result.put("errors", errors);
-
-        return ApiResponse.success("Import Excel hoàn tất", result);
     }
 
     @Override
@@ -381,7 +466,6 @@ public class ThresholdRuleServiceImpl implements ThresholdRuleService {
                             "Threshold rule not found: " + id
                     ));
 
-            Boolean wasEnabled = existingRule.getIsEnabled();
             Long oldDeviceId = existingRule.getDevice().getId();
             String oldMetricType = existingRule.getMetricType();
 
@@ -426,43 +510,44 @@ public class ThresholdRuleServiceImpl implements ThresholdRuleService {
                 );
             }
 
-            OffsetDateTime now = OffsetDateTime.now();
+            ThresholdRuleRequest normalizedPayload = ThresholdRuleRequest.builder()
+                    .deviceId(device.getId())
+                    .metricType(normalizedMetric)
+                    .warningLimit(request.getWarningLimit())
+                    .criticalLimit(request.getCriticalLimit())
+                    .consecutiveOccurrences(
+                            request.getConsecutiveOccurrences() != null
+                                    ? request.getConsecutiveOccurrences()
+                                    : existingRule.getConsecutiveOccurrences()
+                    )
+                    .isEnabled(
+                            request.getIsEnabled() != null
+                                    ? request.getIsEnabled()
+                                    : existingRule.getIsEnabled()
+                    )
+                    .build();
 
-            existingRule.setDevice(device);
-            existingRule.setMetricType(normalizedMetric);
-            existingRule.setWarningLimit(request.getWarningLimit());
-            existingRule.setCriticalLimit(request.getCriticalLimit());
-
-            if (request.getConsecutiveOccurrences() != null) {
-                existingRule.setConsecutiveOccurrences(request.getConsecutiveOccurrences());
+            if (isSuperAdminAccount()) {
+                executeUpdateRule(id, normalizedPayload);
+                return ApiResponse.success(
+                        "Cập nhật ngưỡng cảnh báo thành công",
+                        null
+                );
             }
 
-            if (request.getIsEnabled() != null) {
-                existingRule.setIsEnabled(request.getIsEnabled());
-            }
-
-            existingRule.setUpdatedAt(now);
-
-            ThresholdRule updated = thresholdRuleRepository.saveAndFlush(existingRule);
-            redisTemplate.delete(STREAK_REDIS_PREFIX + id);
-
-            boolean isEnabledChanged = !java.util.Objects.equals(wasEnabled, updated.getIsEnabled());
-            boolean metricTypeChanged = !oldMetricType.equals(normalizedMetric);
-            boolean deviceChanged = !oldDeviceId.equals(device.getId());
-
-            if (isEnabledChanged || metricTypeChanged || deviceChanged) {
-                incidentService.resolveOpenIncident(oldDeviceId, oldMetricType, now);
-            }
-
-            log.info(
-                    "Threshold rule updated. ID: {}, Device ID: {}, Metric: {}",
-                    updated.getId(),
+            ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                    ENTITY_TYPE,
+                    "UPDATE",
+                    id,
                     device.getId(),
-                    normalizedMetric
+                    "Cập nhật ngưỡng cảnh báo ID=" + id + " (" + existingRule.getMetricType()
+                            + ") trên thiết bị ID=" + device.getId() + " (" + device.getDeviceName() + ")",
+                    toResponse(existingRule),
+                    normalizedPayload
             );
 
             return ApiResponse.success(
-                    "Threshold rule updated successfully",
+                    "Đã gửi yêu cầu cập nhật ngưỡng cảnh báo (Ticket #" + ticket.getId() + "), đang chờ phê duyệt",
                     null
             );
         } catch (Exception e) {
@@ -484,24 +569,297 @@ public class ThresholdRuleServiceImpl implements ThresholdRuleService {
                             "Threshold rule not found: " + id
                     ));
 
-            Boolean wasEnabled = existingRule.getIsEnabled();
-            Long deviceId = existingRule.getDevice().getId();
-            String metricType = existingRule.getMetricType();
-
-            thresholdRuleRepository.delete(existingRule);
-            redisTemplate.delete(STREAK_REDIS_PREFIX + id);
-
-            if (Boolean.TRUE.equals(wasEnabled)) {
-                incidentService.resolveOpenIncident(deviceId, metricType, OffsetDateTime.now());
+            if (isSuperAdminAccount()) {
+                executeDeleteRule(id);
+                return ApiResponse.success(
+                        "Xóa ngưỡng cảnh báo thành công",
+                        null
+                );
             }
 
-            log.info("Threshold rule deleted. ID: {}", id);
+            Device device = existingRule.getDevice();
 
-            return ApiResponse.success("Threshold rule deleted successfully", null);
+            ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                    ENTITY_TYPE,
+                    "DELETE",
+                    id,
+                    device.getId(),
+                    "Xóa ngưỡng cảnh báo ID=" + id + " (" + existingRule.getMetricType()
+                            + ") trên thiết bị ID=" + device.getId() + " (" + device.getDeviceName() + ")",
+                    toResponse(existingRule),
+                    null
+            );
+
+            return ApiResponse.success(
+                    "Đã gửi yêu cầu xóa ngưỡng cảnh báo (Ticket #" + ticket.getId() + "), đang chờ phê duyệt",
+                    null
+            );
         } catch (Exception e) {
             log.error("Failed to delete threshold rule. ID: {}", id, e);
             return ApiResponse.error("Failed to delete threshold rule: " + e.getMessage());
         }
+    }
+
+    private boolean isSuperAdminAccount() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+
+        String username = null;
+        boolean hasSuperAdminRole = false;
+
+        if (auth.getPrincipal() instanceof Jwt jwt) {
+            username = jwt.getClaimAsString("preferred_username");
+            if (username == null || username.isBlank()) {
+                username = jwt.getSubject();
+            }
+
+            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+            if (realmAccess != null && realmAccess.get("roles") instanceof Collection<?> roles) {
+                for (Object role : roles) {
+                    if (SUPER_ADMIN_ROLE.equals(String.valueOf(role))) {
+                        hasSuperAdminRole = true;
+                        break;
+                    }
+                }
+            }
+        } else {
+            username = auth.getName();
+        }
+
+        if (!hasSuperAdminRole && auth.getAuthorities() != null) {
+            for (GrantedAuthority authority : auth.getAuthorities()) {
+                if (SUPER_ADMIN_ROLE.equals(authority.getAuthority())) {
+                    hasSuperAdminRole = true;
+                    break;
+                }
+            }
+        }
+
+        return ADMIN_USERNAME.equalsIgnoreCase(username) && hasSuperAdminRole;
+    }
+
+    private ThresholdRule insertRuleDirectly(Device device, ThresholdRuleRequest request) {
+        OffsetDateTime now = OffsetDateTime.now();
+
+        ThresholdRule rule = ThresholdRule.builder()
+                .device(device)
+                .metricType(request.getMetricType())
+                .warningLimit(request.getWarningLimit())
+                .criticalLimit(request.getCriticalLimit())
+                .consecutiveOccurrences(
+                        request.getConsecutiveOccurrences() != null
+                                ? request.getConsecutiveOccurrences()
+                                : 3
+                )
+                .isEnabled(
+                        request.getIsEnabled() != null
+                                ? request.getIsEnabled()
+                                : true
+                )
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+
+        return thresholdRuleRepository.saveAndFlush(rule);
+    }
+
+    @Transactional
+    public void executeCreateRule(ThresholdRuleRequest request) {
+        if (request == null || request.getDeviceId() == null) {
+            throw new IllegalArgumentException("Device ID is required");
+        }
+
+        String normalizedMetric = normalizeMetricKey(request.getMetricType());
+        String validationError = validateRuleRequest(request, normalizedMetric);
+        if (validationError != null) {
+            throw new IllegalArgumentException(validationError);
+        }
+
+        Device device = deviceRepository.findById(request.getDeviceId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Device not found: " + request.getDeviceId()
+                ));
+
+        Set<String> deviceMetrics = getDeviceMetricsFromRedis(device.getId());
+        if (!deviceMetrics.isEmpty() && !deviceMetrics.contains(normalizedMetric)) {
+            throw new IllegalArgumentException(
+                    "Metric '" + normalizedMetric + "' is not available for device " + device.getId()
+            );
+        }
+
+        if (thresholdRuleRepository.existsByDeviceIdAndMetricType(device.getId(), normalizedMetric)) {
+            throw new IllegalArgumentException(
+                    "Threshold rule already exists for device " + device.getId()
+                            + " and metric '" + normalizedMetric + "'"
+            );
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+
+        ThresholdRule rule = ThresholdRule.builder()
+                .device(device)
+                .metricType(normalizedMetric)
+                .warningLimit(request.getWarningLimit())
+                .criticalLimit(request.getCriticalLimit())
+                .consecutiveOccurrences(
+                        request.getConsecutiveOccurrences() != null
+                                ? request.getConsecutiveOccurrences()
+                                : 3
+                )
+                .isEnabled(
+                        request.getIsEnabled() != null
+                                ? request.getIsEnabled()
+                                : true
+                )
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+
+        ThresholdRule saved = thresholdRuleRepository.saveAndFlush(rule);
+        log.info(
+                "Threshold rule created after approval. ID: {}, Device ID: {}, Metric: {}",
+                saved.getId(),
+                device.getId(),
+                normalizedMetric
+        );
+    }
+
+    @Transactional
+    public void executeBulkImportRules(Long deviceId, List<ThresholdRuleRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            throw new IllegalArgumentException("Danh sách ngưỡng cảnh báo import trống");
+        }
+
+        for (ThresholdRuleRequest item : requests) {
+            if (deviceId != null && item.getDeviceId() == null) {
+                item.setDeviceId(deviceId);
+            }
+            executeCreateRule(item);
+        }
+    }
+
+    @Transactional
+    public void executeUpdateRule(Long id, ThresholdRuleRequest request) {
+        if (id == null) {
+            throw new IllegalArgumentException("Rule ID is required");
+        }
+
+        if (request == null) {
+            throw new IllegalArgumentException("Invalid threshold rule request");
+        }
+
+        ThresholdRule existingRule = thresholdRuleRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Threshold rule not found: " + id
+                ));
+
+        Boolean wasEnabled = existingRule.getIsEnabled();
+        Long oldDeviceId = existingRule.getDevice().getId();
+        String oldMetricType = existingRule.getMetricType();
+
+        Long targetDeviceId = request.getDeviceId() != null
+                ? request.getDeviceId()
+                : oldDeviceId;
+
+        String normalizedMetric = request.getMetricType() != null
+                ? normalizeMetricKey(request.getMetricType())
+                : oldMetricType;
+
+        String validationError = validateRuleRequest(request, normalizedMetric);
+        if (validationError != null) {
+            throw new IllegalArgumentException(validationError);
+        }
+
+        Device device = existingRule.getDevice();
+        if (!device.getId().equals(targetDeviceId)) {
+            device = deviceRepository.findById(targetDeviceId)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Device not found: " + targetDeviceId
+                    ));
+        }
+
+        Set<String> deviceMetrics = getDeviceMetricsFromRedis(device.getId());
+        if (!deviceMetrics.isEmpty() && !deviceMetrics.contains(normalizedMetric)) {
+            throw new IllegalArgumentException(
+                    "Metric '" + normalizedMetric + "' is not available for device " + device.getId()
+            );
+        }
+
+        boolean duplicated = thresholdRuleRepository.existsByDeviceIdAndMetricTypeAndIdNot(
+                device.getId(),
+                normalizedMetric,
+                id
+        );
+
+        if (duplicated) {
+            throw new IllegalArgumentException(
+                    "Another threshold rule already exists for device " + device.getId()
+                            + " and metric '" + normalizedMetric + "'"
+            );
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+
+        existingRule.setDevice(device);
+        existingRule.setMetricType(normalizedMetric);
+        existingRule.setWarningLimit(request.getWarningLimit());
+        existingRule.setCriticalLimit(request.getCriticalLimit());
+
+        if (request.getConsecutiveOccurrences() != null) {
+            existingRule.setConsecutiveOccurrences(request.getConsecutiveOccurrences());
+        }
+
+        if (request.getIsEnabled() != null) {
+            existingRule.setIsEnabled(request.getIsEnabled());
+        }
+
+        existingRule.setUpdatedAt(now);
+
+        ThresholdRule updated = thresholdRuleRepository.saveAndFlush(existingRule);
+        redisTemplate.delete(STREAK_REDIS_PREFIX + id);
+
+        boolean isEnabledChanged = !Objects.equals(wasEnabled, updated.getIsEnabled());
+        boolean metricTypeChanged = !oldMetricType.equals(normalizedMetric);
+        boolean deviceChanged = !oldDeviceId.equals(device.getId());
+
+        if (isEnabledChanged || metricTypeChanged || deviceChanged) {
+            incidentService.resolveOpenIncident(oldDeviceId, oldMetricType, now);
+        }
+
+        log.info(
+                "Threshold rule updated. ID: {}, Device ID: {}, Metric: {}",
+                updated.getId(),
+                device.getId(),
+                normalizedMetric
+        );
+    }
+
+    @Transactional
+    public void executeDeleteRule(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("Rule ID is required");
+        }
+
+        ThresholdRule existingRule = thresholdRuleRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Threshold rule not found: " + id
+                ));
+
+        Boolean wasEnabled = existingRule.getIsEnabled();
+        Long deviceId = existingRule.getDevice().getId();
+        String metricType = existingRule.getMetricType();
+
+        thresholdRuleRepository.delete(existingRule);
+        thresholdRuleRepository.flush();
+        redisTemplate.delete(STREAK_REDIS_PREFIX + id);
+
+        if (Boolean.TRUE.equals(wasEnabled)) {
+            incidentService.resolveOpenIncident(deviceId, metricType, OffsetDateTime.now());
+        }
+
+        log.info("Threshold rule deleted. ID: {}", id);
     }
 
     @Override

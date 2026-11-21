@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -19,6 +20,7 @@ public class IncidentController {
     private final IncidentService incidentService;
 
     @GetMapping("/{metricType}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Page<IncidentResponse>>> getIncidentsByMetricType(
             @PathVariable("metricType") String metricType,
             @RequestParam(required = false) Long deviceId,
@@ -42,6 +44,7 @@ public class IncidentController {
     }
 
     @GetMapping("/device/{deviceId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Page<DeviceIncidentMetricSummaryResponse>>> getIncidentsByDevice(
             @PathVariable Long deviceId,
             @ModelAttribute SearchRequest request

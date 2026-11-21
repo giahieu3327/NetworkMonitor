@@ -1,8 +1,22 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { axiosClient } from '../../api/axiosClient';
 import '../../styles/common.css';
 import './InterfacePage.css';
+
+const ALLOWED_VIEW_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+  'ROLE_GUEST_VIEWER',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
 
 const INTERFACE_TYPE_MAP = {
   1: 'Khác (Other)',
@@ -57,9 +71,34 @@ const getResponseData = (response) => {
   return response?.data?.data ?? response?.data ?? {};
 };
 
-const InterfacePage = () => {
+const InterfacePage = ({ currentUser }) => {
   const { deviceId, interfaceIndex } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const effectiveUser = currentUser || location.state?.currentUser || null;
+
+  const userRoles = useMemo(() => {
+    const roles = new Set();
+
+    if (effectiveUser?.roleName) {
+      roles.add(normalizeRole(effectiveUser.roleName));
+    }
+
+    if (Array.isArray(effectiveUser?.roles)) {
+      effectiveUser.roles.forEach((role) => {
+        const normalized = normalizeRole(role);
+        if (normalized) roles.add(normalized);
+      });
+    }
+
+    return roles;
+  }, [effectiveUser]);
+
+  const canViewInterface = useMemo(() => {
+    if (!effectiveUser) return true;
+    return Array.from(userRoles).some((role) => ALLOWED_VIEW_ROLES.has(role));
+  }, [effectiveUser, userRoles]);
 
   const [interfaceData, setInterfaceData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -78,6 +117,11 @@ const InterfacePage = () => {
   }, []);
 
   const fetchInterfaceDetail = useCallback(async () => {
+    if (!canViewInterface) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setErrorMsg('');
@@ -95,7 +139,7 @@ const InterfacePage = () => {
     } finally {
       setLoading(false);
     }
-  }, [deviceId, interfaceIndex]);
+  }, [deviceId, interfaceIndex, canViewInterface]);
 
   useEffect(() => {
     if (deviceId && interfaceIndex !== undefined) {
@@ -138,6 +182,42 @@ const InterfacePage = () => {
       </div>
     );
   };
+
+  if (!canViewInterface) {
+    return (
+      <div className={`iface-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+        <header className="iface-header">
+          <div className="iface-header-left">
+            <button
+              type="button"
+              className="iface-back-button"
+              onClick={handleBack}
+              title="Quay lại"
+            >
+              ←
+            </button>
+            <h2>CHI TIẾT NETWORK INTERFACE</h2>
+          </div>
+        </header>
+        <main className="iface-main">
+          <div className="iface-card">
+            <div className="permission-message">
+              Bạn không có quyền xem thông tin interface của thiết bị này.
+            </div>
+            <div className="iface-actions">
+              <button
+                type="button"
+                className="iface-cancel-btn"
+                onClick={handleBack}
+              >
+                Quay lại
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

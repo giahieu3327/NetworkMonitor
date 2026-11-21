@@ -15,6 +15,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -36,6 +37,7 @@ public class OidConfigController {
     // =========================================================
 
     @PostMapping
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<OidConfigResponse>> createOidConfig(
             @Valid @RequestBody OidConfigRequest request) {
 
@@ -57,6 +59,7 @@ public class OidConfigController {
             value = "/import",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> importOidConfigs(
             @RequestParam("deviceId") Long deviceId,
             @RequestParam("file") MultipartFile file) {
@@ -72,6 +75,7 @@ public class OidConfigController {
     }
 
     @GetMapping("/export")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR', 'ROLE_REPORT_MANAGER')")
     public ResponseEntity<byte[]> exportOidConfigs(
             @RequestParam("deviceId") Long deviceId) throws IOException {
 
@@ -83,6 +87,7 @@ public class OidConfigController {
     }
 
     @GetMapping("/import/template")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<byte[]> downloadOidConfigImportTemplate()
             throws IOException {
 
@@ -98,6 +103,7 @@ public class OidConfigController {
     // =========================================================
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> updateOidConfig(
             @PathVariable Long id,
             @Valid @RequestBody OidConfigRequest request) {
@@ -117,6 +123,7 @@ public class OidConfigController {
     // =========================================================
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteOidConfig(
             @PathVariable Long id) {
 
@@ -131,6 +138,7 @@ public class OidConfigController {
     }
 
     @DeleteMapping("/device/{deviceId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteOidConfigsByDeviceId(
             @PathVariable Long deviceId) {
 
@@ -149,6 +157,7 @@ public class OidConfigController {
     // =========================================================
 
     @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<OidConfigResponse>> getOidConfigById(
             @PathVariable Long id) {
 
@@ -164,6 +173,7 @@ public class OidConfigController {
     }
 
     @GetMapping("/device/{deviceId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Page<OidConfigResponse>> getOidConfigsByDeviceId(
             @PathVariable Long deviceId,
             @ModelAttribute SearchRequest request) {

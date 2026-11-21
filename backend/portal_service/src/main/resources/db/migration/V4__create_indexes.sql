@@ -40,3 +40,15 @@ ON arp_mac_tables(ip_address);
 
 CREATE INDEX idx_arp_mac_tables_mac
 ON arp_mac_tables(mac_address);
+
+CREATE INDEX idx_approval_tickets_status_created_at
+ON approval_tickets(status, created_at DESC);
+
+CREATE INDEX idx_approval_tickets_entity_status_created
+ON approval_tickets(entity_type, status, created_at DESC);
+
+CREATE INDEX idx_approval_tickets_maker_created_at
+ON approval_tickets(maker_id, created_at DESC);
+
+CREATE INDEX idx_approval_tickets_parent_device
+ON approval_tickets(parent_device_id, status);

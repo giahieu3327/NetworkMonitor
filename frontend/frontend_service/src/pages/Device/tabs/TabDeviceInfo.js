@@ -1,9 +1,28 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { axiosClient } from '../../../api/axiosClient';
 
 import './TabDeviceInfo.css';
+
+const ALLOWED_VIEW_ROLES = new Set([
+    'ROLE_SUPER_ADMIN',
+    'ROLE_NETWORK_ADMIN',
+    'ROLE_NOC_OPERATOR',
+    'ROLE_REPORT_MANAGER',
+    'ROLE_GUEST_VIEWER',
+]);
+
+const DEVICE_MANAGE_ROLES = new Set([
+    'ROLE_SUPER_ADMIN',
+    'ROLE_NETWORK_ADMIN',
+]);
+
+const normalizeRole = (role) => {
+    if (!role || typeof role !== 'string') return '';
+    const trimmed = role.trim().toUpperCase();
+    return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
 
 const parseUptimeToSeconds = (uptime) => {
     if (!uptime || typeof uptime !== 'string') return 0;
@@ -64,8 +83,44 @@ const getDelayToNextMinuteAtSecond15 = () => {
     return next.getTime() - now.getTime();
 };
 
-const TabDeviceInfo = ({ deviceId, device }) => {
+const TabDeviceInfo = ({
+    deviceId,
+    device,
+    currentUser,
+    canManageDevices: canManageDevicesProp,
+}) => {
     const navigate = useNavigate();
+
+    const userRoles = useMemo(() => {
+        const roles = new Set();
+
+        if (currentUser?.roleName) {
+            roles.add(normalizeRole(currentUser.roleName));
+        }
+
+        if (Array.isArray(currentUser?.roles)) {
+            currentUser.roles.forEach((role) => {
+                const normalized = normalizeRole(role);
+                if (normalized) roles.add(normalized);
+            });
+        }
+
+        return roles;
+    }, [currentUser]);
+
+    const canViewDeviceInfo = useMemo(() => {
+        if (!currentUser) return true;
+        return Array.from(userRoles).some((role) => ALLOWED_VIEW_ROLES.has(role));
+    }, [currentUser, userRoles]);
+
+    const canManageDevices = useMemo(() => {
+        if (typeof canManageDevicesProp === 'boolean') {
+            return canManageDevicesProp;
+        }
+        return Array.from(userRoles).some((role) =>
+            DEVICE_MANAGE_ROLES.has(role)
+        );
+    }, [canManageDevicesProp, userRoles]);
 
     const [deviceInfo, setDeviceInfo] = useState(device || null);
     const [loading, setLoading] = useState(true);
@@ -93,7 +148,7 @@ const TabDeviceInfo = ({ deviceId, device }) => {
     });
 
     const fetchDevice = useCallback(async (signal) => {
-        if (!deviceId) return;
+        if (!deviceId || !canViewDeviceInfo) return;
 
         try {
             setBasicError('');
@@ -131,10 +186,10 @@ const TabDeviceInfo = ({ deviceId, device }) => {
         } finally {
             setLoading(false);
         }
-    }, [deviceId]);
+    }, [deviceId, canViewDeviceInfo]);
 
     const fetchSnmpInfo = useCallback(async (signal) => {
-        if (!deviceId) return;
+        if (!deviceId || !canViewDeviceInfo) return;
 
         try {
             const response = await axiosClient.get(
@@ -204,10 +259,13 @@ const TabDeviceInfo = ({ deviceId, device }) => {
             setSnmpInfo(null);
             setUptimeReceivedAt(null);
         }
-    }, [deviceId]);
+    }, [deviceId, canViewDeviceInfo]);
 
     useEffect(() => {
-        if (!deviceId) return;
+        if (!deviceId || !canViewDeviceInfo) {
+            setLoading(false);
+            return;
+        }
 
         let isMounted = true;
         let timeoutId;
@@ -241,7 +299,7 @@ const TabDeviceInfo = ({ deviceId, device }) => {
             clearTimeout(timeoutId);
             controller?.abort();
         };
-    }, [deviceId, fetchDevice, fetchSnmpInfo]);
+    }, [deviceId, canViewDeviceInfo, fetchDevice, fetchSnmpInfo]);
 
     useEffect(() => {
         if (uptimeReceivedAt === null) return;
@@ -260,7 +318,7 @@ const TabDeviceInfo = ({ deviceId, device }) => {
     }, [uptimeBase, uptimeReceivedAt]);
 
     const handleOpenEdit = () => {
-        if (!deviceInfo) return;
+        if (!canManageDevices || !deviceInfo) return;
 
         setFormData({
             deviceName: deviceInfo.deviceName || '',
@@ -284,6 +342,7 @@ const TabDeviceInfo = ({ deviceId, device }) => {
 
     const handleUpdate = async (e) => {
         e.preventDefault();
+        if (!canManageDevices) return;
 
         if (!formData.deviceName.trim()) {
             setError('Vui lòng nhập tên thiết bị.');
@@ -330,7 +389,10 @@ const TabDeviceInfo = ({ deviceId, device }) => {
                 fetchSnmpInfo(),
             ]);
 
-            setSuccess('Cập nhật thông tin thiết bị thành công.');
+            setSuccess(
+                response.data?.message ||
+                'Cập nhật thông tin thiết bị thành công.'
+            );
         } catch (err) {
             console.error('Update device error:', err);
 
@@ -345,6 +407,8 @@ const TabDeviceInfo = ({ deviceId, device }) => {
     };
 
     const handleDelete = async () => {
+        if (!canManageDevices) return;
+
         const confirmed = window.confirm(
             `Bạn có chắc chắn muốn xóa thiết bị "${deviceInfo?.deviceName || ''}" không?\n\nThao tác này không thể hoàn tác.`
         );
@@ -420,6 +484,14 @@ const TabDeviceInfo = ({ deviceId, device }) => {
             ];
         });
     };
+
+    if (!canViewDeviceInfo) {
+        return (
+            <div className="permission-message">
+                Bạn không có quyền xem thông tin của thiết bị này.
+            </div>
+        );
+    }
 
     if (loading) {
         return (
@@ -510,27 +582,29 @@ const TabDeviceInfo = ({ deviceId, device }) => {
                                 ))}
                             </div>
 
-                            <div className="device-info-actions">
-                                <button
-                                    type="button"
-                                    className="device-info-edit-btn"
-                                    onClick={handleOpenEdit}
-                                    disabled={deleting}
-                                >
-                                    ✎ Chỉnh sửa
-                                </button>
+                            {canManageDevices && (
+                                <div className="device-info-actions">
+                                    <button
+                                        type="button"
+                                        className="device-info-edit-btn"
+                                        onClick={handleOpenEdit}
+                                        disabled={deleting}
+                                    >
+                                        ✎ Chỉnh sửa
+                                    </button>
 
-                                <button
-                                    type="button"
-                                    className="device-info-delete-btn"
-                                    onClick={handleDelete}
-                                    disabled={deleting}
-                                >
-                                    {deleting
-                                        ? 'Đang xóa...'
-                                        : '✕ Xóa thiết bị'}
-                                </button>
-                            </div>
+                                    <button
+                                        type="button"
+                                        className="device-info-delete-btn"
+                                        onClick={handleDelete}
+                                        disabled={deleting}
+                                    >
+                                        {deleting
+                                            ? 'Đang xóa...'
+                                            : '✕ Xóa thiết bị'}
+                                    </button>
+                                </div>
+                            )}
                         </>
                     )}
                 </div>
@@ -578,7 +652,7 @@ const TabDeviceInfo = ({ deviceId, device }) => {
                 )}
             </div>
 
-            {showEditModal && (
+            {canManageDevices && showEditModal && (
                 <div
                     className="device-info-modal-overlay"
                     onClick={() => {

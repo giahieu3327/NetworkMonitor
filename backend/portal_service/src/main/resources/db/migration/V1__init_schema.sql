@@ -171,3 +171,39 @@ CREATE TABLE arp_mac_tables (
     CONSTRAINT uq_arp_mac_tables_device_ip
         UNIQUE (device_id, ip_address)
 );
+
+CREATE TABLE approval_tickets (
+    id BIGSERIAL PRIMARY KEY,
+    entity_type VARCHAR(50) NOT NULL,
+    action_type VARCHAR(30) NOT NULL,
+    target_id BIGINT,
+    parent_device_id BIGINT,
+    summary VARCHAR(255) NOT NULL,
+    before_data JSONB,
+    payload JSONB,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    process_instance_id VARCHAR(64) UNIQUE,
+    maker_id VARCHAR(36) NOT NULL,
+    checker_id VARCHAR(36),
+    checker_comment TEXT,
+    execution_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TIMESTAMPTZ,
+    executed_at TIMESTAMPTZ,
+
+    CONSTRAINT fk_approval_tickets_device
+        FOREIGN KEY (parent_device_id)
+        REFERENCES devices(id)
+        ON DELETE SET NULL,
+
+    CONSTRAINT fk_approval_tickets_maker
+        FOREIGN KEY (maker_id)
+        REFERENCES users(id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_approval_tickets_checker
+        FOREIGN KEY (checker_id)
+        REFERENCES users(id)
+        ON DELETE RESTRICT
+);

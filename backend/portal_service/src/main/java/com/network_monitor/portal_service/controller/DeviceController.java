@@ -14,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -35,6 +36,7 @@ public class DeviceController {
     // =========================================================
 
     @PostMapping
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<DeviceResponse>> createDevice(
             @Valid @RequestBody DeviceRequest request) {
 
@@ -56,6 +58,7 @@ public class DeviceController {
             value = "/import",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> importDevices(
             @RequestParam("file") MultipartFile file) {
 
@@ -70,6 +73,7 @@ public class DeviceController {
     }
 
     @GetMapping("/export")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR', 'ROLE_REPORT_MANAGER')")
     public ResponseEntity<byte[]> exportDevices()
             throws IOException {
 
@@ -81,6 +85,7 @@ public class DeviceController {
     }
 
     @GetMapping("/import/template")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<byte[]> downloadDeviceImportTemplate()
             throws IOException {
 
@@ -96,6 +101,7 @@ public class DeviceController {
     // =========================================================
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> updateDevice(
             @PathVariable Long id,
             @Valid @RequestBody DeviceRequest request) {
@@ -115,6 +121,7 @@ public class DeviceController {
     // =========================================================
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteDevice(
             @PathVariable Long id) {
 
@@ -128,6 +135,7 @@ public class DeviceController {
     }
 
     @DeleteMapping
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteAllDevices() {
         ApiResponse<Void> response = deviceService.deleteAllDevices();
 
@@ -143,6 +151,7 @@ public class DeviceController {
     // =========================================================
 
     @GetMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Page<DeviceResponse>> getDevices(
             @ModelAttribute SearchRequest request) {
 
@@ -150,6 +159,7 @@ public class DeviceController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<DeviceResponse>> getDeviceById(
             @PathVariable Long id) {
 
@@ -165,6 +175,7 @@ public class DeviceController {
     }
 
     @GetMapping("/{id}/info")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getDeviceInfo(
             @PathVariable Long id) {
 

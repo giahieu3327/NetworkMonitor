@@ -1,4 +1,3 @@
-
 package com.network_monitor.portal_service.service.impl;
 
 import com.network_monitor.portal_service.health.Health;
@@ -7,11 +6,13 @@ import com.network_monitor.portal_service.model.dto.request.DeviceRequest;
 import com.network_monitor.portal_service.model.dto.request.SearchRequest;
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
 import com.network_monitor.portal_service.model.dto.response.DeviceResponse;
+import com.network_monitor.portal_service.model.entity.ApprovalTicket;
 import com.network_monitor.portal_service.model.entity.Device;
 import com.network_monitor.portal_service.repository.DeviceRepository;
 import com.network_monitor.portal_service.service.DeviceService;
 import com.network_monitor.portal_service.service.SnmpService;
 import com.network_monitor.portal_service.util.SearchRequestUtils;
+import com.network_monitor.portal_service.workflow.ApprovalWorkflowService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,13 +23,20 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,36 +46,48 @@ import java.util.Map;
 @Slf4j
 public class DeviceServiceImpl implements DeviceService {
 
+    private static final String ENTITY_TYPE = "DEVICE";
+    private static final String ADMIN_USERNAME = "admin";
+    private static final String SUPER_ADMIN_ROLE = "ROLE_SUPER_ADMIN";
+    private static final String IPV4_REGEX =
+            "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}"
+                    + "(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$";
+
     private final DeviceRepository deviceRepository;
     private final DeviceMapper deviceMapper;
     private final Health health;
     private final SnmpService snmpService;
-
-    // =========================================================
-    // CREATE DEVICE
-    // =========================================================
+    private final ApprovalWorkflowService approvalWorkflowService;
 
     @Override
+    @Transactional
     public ApiResponse<DeviceResponse> createDevice(DeviceRequest request) {
         try {
-            Device device = Device.builder()
-                    .deviceName(request.getDeviceName())
-                    .ipAddress(request.getIpAddress())
-                    .deviceType(request.getDeviceType())
-                    .status(
-                            health.checkPing(request.getIpAddress())
-                                    ? "UP"
-                                    : "DOWN"
-                    )
-                    .build();
+            validateDeviceRequest(request);
 
-            Device saved = deviceRepository.saveAndFlush(device);
+            if (isSuperAdminAccount()) {
+                Device saved = insertDeviceDirectly(request);
+                return ApiResponse.success(
+                        "Thêm thiết bị thành công",
+                        toResponse(saved)
+                );
+            }
 
-            snmpService.reloadConfigs();
+            ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                    ENTITY_TYPE,
+                    "CREATE",
+                    null,
+                    null,
+                    "Thêm thiết bị mới: " + request.getDeviceName()
+                            + " (" + request.getIpAddress() + ")",
+                    null,
+                    request
+            );
 
             return ApiResponse.success(
-                    "Thêm thiết bị thành công",
-                    toResponse(saved)
+                    "Đã tạo ticket #" + ticket.getId()
+                            + " yêu cầu thêm thiết bị, chờ Checker phê duyệt",
+                    null
             );
 
         } catch (Exception e) {
@@ -76,11 +96,8 @@ public class DeviceServiceImpl implements DeviceService {
         }
     }
 
-    // =========================================================
-    // IMPORT DEVICES FROM EXCEL
-    // =========================================================
-
     @Override
+    @Transactional
     public ApiResponse<Map<String, Object>> createDevicesFromExcel(
             MultipartFile file) {
 
@@ -88,11 +105,14 @@ public class DeviceServiceImpl implements DeviceService {
             return ApiResponse.error("File Excel không được để trống");
         }
 
+        boolean bypassApproval = isSuperAdminAccount();
+
         int totalRows = 0;
         int successCount = 0;
         int failedCount = 0;
         int skippedCount = 0;
 
+        List<DeviceRequest> validRequests = new ArrayList<>();
         List<Map<String, Object>> errors = new ArrayList<>();
 
         try (InputStream input = file.getInputStream();
@@ -127,41 +147,15 @@ public class DeviceServiceImpl implements DeviceService {
                             row, formatter
                     );
 
-                    if (request.getDeviceName().isBlank()
-                            || request.getIpAddress().isBlank()
-                            || request.getDeviceType().isBlank()) {
+                    validateDeviceRequest(request);
 
-                        throw new IllegalArgumentException(
-                                "Device Name, IP Address và Device Type "
-                                        + "không được để trống"
-                        );
-                    }
-
-                    if (!request.getIpAddress().matches(
-                            "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}"
-                                    + "(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"
-                    )) {
-                        throw new IllegalArgumentException(
-                                "Địa chỉ IPv4 không hợp lệ"
-                        );
-                    }
-
-                    ApiResponse<DeviceResponse> response =
-                            createDevice(request);
-
-                    if (response != null && response.isSuccess()) {
-                        successCount++;
+                    if (bypassApproval) {
+                        insertDeviceDirectly(request);
                     } else {
-                        failedCount++;
-
-                        addImportError(
-                                errors,
-                                i + 1,
-                                response == null
-                                        ? "Không thể tạo thiết bị"
-                                        : response.getMessage()
-                        );
+                        validRequests.add(request);
                     }
+
+                    successCount++;
 
                 } catch (Exception e) {
                     failedCount++;
@@ -174,23 +168,48 @@ public class DeviceServiceImpl implements DeviceService {
                 }
             }
 
+            Map<String, Object> result = new LinkedHashMap<>();
+
+            result.put("totalRows", totalRows);
+            result.put("successCount", successCount);
+            result.put("failedCount", failedCount);
+            result.put("skippedCount", skippedCount);
+            result.put("errors", errors);
+
+            if (bypassApproval) {
+                return ApiResponse.success(
+                        "Import thiết bị từ Excel hoàn tất",
+                        result
+                );
+            }
+
+            if (!validRequests.isEmpty()) {
+                ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                        ENTITY_TYPE,
+                        "BULK_IMPORT",
+                        null,
+                        null,
+                        "Import " + validRequests.size()
+                                + " thiết bị từ file Excel",
+                        null,
+                        validRequests
+                );
+
+                result.put("ticketId", ticket.getId());
+                result.put("processInstanceId", ticket.getProcessInstanceId());
+            }
+
+            return ApiResponse.success(
+                    validRequests.isEmpty()
+                            ? "Không có dòng dữ liệu hợp lệ để tạo ticket"
+                            : "Đã tạo ticket import Excel, chờ Checker phê duyệt",
+                    result
+            );
+
         } catch (Exception e) {
             log.error("Import devices failed", e);
             return ApiResponse.error(getErrorMessage(e));
         }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-
-        result.put("totalRows", totalRows);
-        result.put("successCount", successCount);
-        result.put("failedCount", failedCount);
-        result.put("skippedCount", skippedCount);
-        result.put("errors", errors);
-
-        return ApiResponse.success(
-                "Import Excel hoàn tất",
-                result
-        );
     }
 
     private void addImportError(
@@ -206,38 +225,55 @@ public class DeviceServiceImpl implements DeviceService {
         errors.add(error);
     }
 
-    // =========================================================
-    // UPDATE DEVICE
-    // =========================================================
-
     @Override
+    @Transactional
     public ApiResponse<Void> updateDevice(
             Long id,
             DeviceRequest request) {
 
         try {
-            Device device = deviceRepository.findById(id)
+            Device existing = deviceRepository.findById(id)
                     .orElseThrow(() ->
                             new IllegalArgumentException(
                                     "Không tìm thấy thiết bị"
                             ));
 
-            device.setDeviceName(request.getDeviceName());
-            device.setIpAddress(request.getIpAddress());
-            device.setDeviceType(request.getDeviceType());
+            validateDeviceRequest(request);
 
-            device.setStatus(
-                    health.checkPing(request.getIpAddress())
-                            ? "UP"
-                            : "DOWN"
+            if (isSuperAdminAccount()) {
+                validateDuplicateDevice(
+                        request.getDeviceName().trim(),
+                        request.getIpAddress().trim(),
+                        id
+                );
+
+                existing.setDeviceName(request.getDeviceName().trim());
+                existing.setIpAddress(request.getIpAddress().trim());
+                existing.setDeviceType(request.getDeviceType().trim());
+                existing.setUpdatedAt(OffsetDateTime.now());
+
+                deviceRepository.saveAndFlush(existing);
+
+                return ApiResponse.success(
+                        "Cập nhật thiết bị thành công",
+                        null
+                );
+            }
+
+            ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                    ENTITY_TYPE,
+                    "UPDATE",
+                    existing.getId(),
+                    null,
+                    "Cập nhật thiết bị ID=" + id
+                            + " (" + existing.getDeviceName() + ")",
+                    toResponse(existing),
+                    request
             );
 
-            deviceRepository.saveAndFlush(device);
-
-            snmpService.reloadConfigs();
-
             return ApiResponse.success(
-                    "Cập nhật thiết bị thành công",
+                    "Đã tạo ticket #" + ticket.getId()
+                            + " yêu cầu cập nhật thiết bị, chờ Checker phê duyệt",
                     null
             );
 
@@ -247,26 +283,40 @@ public class DeviceServiceImpl implements DeviceService {
         }
     }
 
-    // =========================================================
-    // DELETE DEVICE
-    // =========================================================
-
     @Override
+    @Transactional
     public ApiResponse<Void> deleteDevice(Long id) {
         try {
-            Device device = deviceRepository.findById(id)
+            Device existing = deviceRepository.findById(id)
                     .orElseThrow(() ->
                             new IllegalArgumentException(
                                     "Không tìm thấy thiết bị"
                             ));
 
-            deviceRepository.delete(device);
-            deviceRepository.flush();
+            if (isSuperAdminAccount()) {
+                deviceRepository.delete(existing);
+                deviceRepository.flush();
 
-            snmpService.reloadConfigs();
+                return ApiResponse.success(
+                        "Xóa thiết bị thành công",
+                        null
+                );
+            }
+
+            ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                    ENTITY_TYPE,
+                    "DELETE",
+                    existing.getId(),
+                    null,
+                    "Xóa thiết bị ID=" + id
+                            + " (" + existing.getDeviceName() + ")",
+                    toResponse(existing),
+                    null
+            );
 
             return ApiResponse.success(
-                    "Xóa thiết bị thành công",
+                    "Đã tạo ticket #" + ticket.getId()
+                            + " yêu cầu xóa thiết bị, chờ Checker phê duyệt",
                     null
             );
 
@@ -276,20 +326,43 @@ public class DeviceServiceImpl implements DeviceService {
         }
     }
 
-    // =========================================================
-    // DELETE ALL DEVICES
-    // =========================================================
-
     @Override
+    @Transactional
     public ApiResponse<Void> deleteAllDevices() {
         try {
-            deviceRepository.deleteAll();
-            deviceRepository.flush();
+            List<Device> allDevices = deviceRepository.findAll();
 
-            snmpService.reloadConfigs();
+            if (allDevices.isEmpty()) {
+                return ApiResponse.error("Danh sách thiết bị đang trống");
+            }
+
+            if (isSuperAdminAccount()) {
+                deviceRepository.deleteAllInBatch();
+                deviceRepository.flush();
+
+                return ApiResponse.success(
+                        "Đã xóa toàn bộ " + allDevices.size() + " thiết bị",
+                        null
+                );
+            }
+
+            List<DeviceResponse> snapshots = allDevices.stream()
+                    .map(this::toResponse)
+                    .toList();
+
+            ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                    ENTITY_TYPE,
+                    "BULK_DELETE",
+                    null,
+                    null,
+                    "Xóa toàn bộ " + allDevices.size() + " thiết bị",
+                    snapshots,
+                    null
+            );
 
             return ApiResponse.success(
-                    "Xóa tất cả thiết bị thành công",
+                    "Đã tạo ticket #" + ticket.getId()
+                            + " yêu cầu xóa tất cả thiết bị, chờ Checker phê duyệt",
                     null
             );
 
@@ -299,9 +372,82 @@ public class DeviceServiceImpl implements DeviceService {
         }
     }
 
-    // =========================================================
-    // SEARCH DEVICES WITH PAGINATION
-    // =========================================================
+    private boolean isSuperAdminAccount() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+
+        String username = null;
+        boolean hasSuperAdminRole = false;
+
+        if (auth.getPrincipal() instanceof Jwt jwt) {
+            username = jwt.getClaimAsString("preferred_username");
+            if (username == null || username.isBlank()) {
+                username = jwt.getSubject();
+            }
+
+            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+            if (realmAccess != null && realmAccess.get("roles") instanceof Collection<?> roles) {
+                for (Object role : roles) {
+                    if (SUPER_ADMIN_ROLE.equals(String.valueOf(role))) {
+                        hasSuperAdminRole = true;
+                        break;
+                    }
+                }
+            }
+        } else {
+            username = auth.getName();
+        }
+
+        if (!hasSuperAdminRole && auth.getAuthorities() != null) {
+            for (GrantedAuthority authority : auth.getAuthorities()) {
+                if (SUPER_ADMIN_ROLE.equals(authority.getAuthority())) {
+                    hasSuperAdminRole = true;
+                    break;
+                }
+            }
+        }
+
+        return ADMIN_USERNAME.equalsIgnoreCase(username) && hasSuperAdminRole;
+    }
+
+    private Device insertDeviceDirectly(DeviceRequest request) {
+        String cleanName = request.getDeviceName().trim();
+        String cleanIp = request.getIpAddress().trim();
+        String cleanType = request.getDeviceType().trim();
+
+        validateDuplicateDevice(cleanName, cleanIp, null);
+
+        OffsetDateTime now = OffsetDateTime.now();
+        String initialStatus = health.checkPing(cleanIp) ? "UP" : "DOWN";
+
+        Device device = Device.builder()
+                .deviceName(cleanName)
+                .ipAddress(cleanIp)
+                .deviceType(cleanType)
+                .status(initialStatus)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+
+        return deviceRepository.saveAndFlush(device);
+    }
+
+    private void validateDuplicateDevice(String deviceName, String ipAddress, Long excludeId) {
+        List<Device> existingDevices = deviceRepository.findAll();
+        for (Device d : existingDevices) {
+            if (excludeId != null && excludeId.equals(d.getId())) {
+                continue;
+            }
+            if (d.getDeviceName() != null && d.getDeviceName().equalsIgnoreCase(deviceName)) {
+                throw new IllegalArgumentException("Tên thiết bị đã tồn tại: " + deviceName);
+            }
+            if (d.getIpAddress() != null && d.getIpAddress().equals(ipAddress)) {
+                throw new IllegalArgumentException("Địa chỉ IP đã tồn tại: " + ipAddress);
+            }
+        }
+    }
 
     @Override
     public Page<DeviceResponse> getDevices(SearchRequest request) {
@@ -323,7 +469,6 @@ public class DeviceServiceImpl implements DeviceService {
 
         long offset = (long) page * size;
 
-        // Chỉ truy vấn PostgreSQL, không Ping hoặc SNMP.
         List<Device> devices = deviceMapper.searchDevices(
                 keyword,
                 offset,
@@ -350,10 +495,6 @@ public class DeviceServiceImpl implements DeviceService {
         );
     }
 
-    // =========================================================
-    // GET DEVICE BY ID
-    // =========================================================
-
     @Override
     public ApiResponse<DeviceResponse> getDeviceById(Long id) {
         try {
@@ -362,9 +503,6 @@ public class DeviceServiceImpl implements DeviceService {
                             new IllegalArgumentException(
                                     "Không tìm thấy thiết bị"
                             ));
-
-            // Chỉ lấy dữ liệu đã lưu trong PostgreSQL.
-            // Không gọi Ping hoặc SNMP Discovery.
 
             return ApiResponse.success(
                     "Lấy thông tin thiết bị thành công",
@@ -376,10 +514,6 @@ public class DeviceServiceImpl implements DeviceService {
             return ApiResponse.error(getErrorMessage(e));
         }
     }
-
-    // =========================================================
-    // EXPORT DEVICES - APACHE POI
-    // =========================================================
 
     @Override
     public byte[] exportDevices() throws IOException {
@@ -453,10 +587,6 @@ public class DeviceServiceImpl implements DeviceService {
         cell.setCellValue(value == null ? "" : value.toString());
     }
 
-    // =========================================================
-    // DOWNLOAD EXCEL IMPORT TEMPLATE
-    // =========================================================
-
     @Override
     public byte[] downloadDeviceImportTemplate() throws IOException {
 
@@ -491,7 +621,6 @@ public class DeviceServiceImpl implements DeviceService {
                     0, 0, 0, headers.length - 1
             ));
 
-            // Instructions
             Sheet instructions = workbook.createSheet("Instructions");
 
             String[][] data = {
@@ -521,8 +650,12 @@ public class DeviceServiceImpl implements DeviceService {
                             "Các dòng hoàn toàn trống sẽ được bỏ qua."
                     },
                     {
+                            "Quy trình phê duyệt",
+                            "Dữ liệu hợp lệ sẽ tạo Ticket chờ Checker phê duyệt trước khi lưu vào hệ thống."
+                    },
+                    {
                             "Status",
-                            "Hệ thống tự động kiểm tra ICMP Ping để xác định UP hoặc DOWN."
+                            "Hệ thống tự động kiểm tra ICMP Ping để xác định UP hoặc DOWN sau khi duyệt."
                     },
                     {
                             "SNMP Credential",
@@ -557,10 +690,6 @@ public class DeviceServiceImpl implements DeviceService {
         }
     }
 
-    // =========================================================
-    // UPDATE DEVICE STATUS - ICMP PING
-    // =========================================================
-
     @Override
     public ApiResponse<Void> updateStatus(Long id, String status) {
         try {
@@ -589,48 +718,55 @@ public class DeviceServiceImpl implements DeviceService {
         }
     }
 
-        // =========================================================
-        // GET DEVICE INFO - SNMP DISCOVERY
-        // =========================================================
-
-        @Override
-        public ApiResponse<Map<String, Object>> getDeviceInfo(Long id) {
+    @Override
+    public ApiResponse<Map<String, Object>> getDeviceInfo(Long id) {
         try {
-                // Kiểm tra thiết bị có tồn tại trong database
-                Device device = deviceRepository.findById(id)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException("Không tìm thấy thiết bị"));
+            Device device = deviceRepository.findById(id)
+                    .orElseThrow(() ->
+                            new IllegalArgumentException("Không tìm thấy thiết bị"));
 
-                // Gọi SnmpService để lấy thông tin DEVICE scope
-                Map<String, Object> snmpResult = snmpService.pollDeviceScope(id);
+            Map<String, Object> snmpResult = snmpService.pollDeviceScope(id);
 
-                // Tạo kết quả trả về
-                Map<String, Object> result = new LinkedHashMap<>();
+            Map<String, Object> result = new LinkedHashMap<>();
 
-                result.put("id", device.getId());
-                result.put("deviceName", device.getDeviceName());
-                result.put("ipAddress", device.getIpAddress());
-                result.put("deviceType", device.getDeviceType());
-                result.put("status", device.getStatus());
+            result.put("id", device.getId());
+            result.put("deviceName", device.getDeviceName());
+            result.put("ipAddress", device.getIpAddress());
+            result.put("deviceType", device.getDeviceType());
+            result.put("status", device.getStatus());
+            result.put("snmpInfo", snmpResult.get("device"));
 
-                // Thông tin lấy từ SNMP
-                result.put("snmpInfo", snmpResult.get("device"));
-
-                return ApiResponse.success(
-                        "Lấy thông tin thiết bị thành công",
-                        result
-                );
+            return ApiResponse.success(
+                    "Lấy thông tin thiết bị thành công",
+                    result
+            );
 
         } catch (Exception e) {
-                log.error("Get device info failed: id={}", id, e);
-
-                return ApiResponse.error(getErrorMessage(e));
+            log.error("Get device info failed: id={}", id, e);
+            return ApiResponse.error(getErrorMessage(e));
         }
+    }
+
+    private void validateDeviceRequest(DeviceRequest request) {
+        if (request == null
+                || request.getDeviceName() == null
+                || request.getDeviceName().isBlank()
+                || request.getIpAddress() == null
+                || request.getIpAddress().isBlank()
+                || request.getDeviceType() == null
+                || request.getDeviceType().isBlank()) {
+
+            throw new IllegalArgumentException(
+                    "Device Name, IP Address và Device Type không được để trống"
+            );
         }
 
-    // =========================================================
-    // PRIVATE HELPERS
-    // =========================================================
+        if (!request.getIpAddress().matches(IPV4_REGEX)) {
+            throw new IllegalArgumentException(
+                    "Địa chỉ IPv4 không hợp lệ"
+            );
+        }
+    }
 
     private DeviceRequest readRequestFromExcel(
             Row row,
@@ -644,7 +780,6 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     private DeviceResponse toResponse(Device device) {
-
         return DeviceResponse.builder()
                 .id(device.getId())
                 .deviceName(device.getDeviceName())
@@ -657,21 +792,16 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     private CellStyle createHeaderStyle(Workbook workbook) {
-
         CellStyle style = workbook.createCellStyle();
 
         Font font = workbook.createFont();
         font.setBold(true);
 
         style.setFont(font);
-
         style.setFillForegroundColor(
                 IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex()
         );
-
-        style.setFillPattern(
-                FillPatternType.SOLID_FOREGROUND
-        );
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
 
         return style;
     }
@@ -712,7 +842,6 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     private String getErrorMessage(Throwable exception) {
-
         Throwable cause = exception;
 
         while (cause.getCause() != null

@@ -4,7 +4,62 @@ import { axiosClient } from '../../api/axiosClient';
 import '../../styles/common.css';
 import './LoginPage.css';
 
-const LoginPage = () => {
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
+const extractRolesFromPayload = (tokenData, userData) => {
+  const rolesSet = new Set();
+
+  const pushRole = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach((item) => pushRole(item));
+      return;
+    }
+    if (typeof val === 'string') {
+      val
+        .split(/[\s,]+/)
+        .map((r) => normalizeRole(r))
+        .filter(Boolean)
+        .forEach((r) => rolesSet.add(r));
+    } else if (typeof val === 'object') {
+      pushRole(val.roleName || val.name || val.authority || val.role);
+    }
+  };
+
+  pushRole(userData?.roleName);
+  pushRole(userData?.roles);
+  pushRole(userData?.authorities);
+  pushRole(tokenData?.roleName);
+  pushRole(tokenData?.roles);
+  pushRole(tokenData?.authorities);
+  pushRole(tokenData?.scope);
+
+  return Array.from(rolesSet);
+};
+
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const jsonStr = decodeURIComponent(
+      atob(padded)
+        .split('')
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join('')
+    );
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+};
+
+const LoginPage = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -27,14 +82,21 @@ const LoginPage = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername || !password) {
+      setErrorMsg('Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu!');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const response = await axiosClient.post('/auth/login', {
-        username: username.trim(),
-        password
+        username: trimmedUsername,
+        password,
       });
-      console.log('Login response:', response.data.data);
+
       const tokenData = response.data?.data ?? response.data;
       const accessToken = tokenData?.access_token || tokenData?.accessToken;
       const refreshToken = tokenData?.refresh_token || tokenData?.refreshToken;
@@ -47,7 +109,55 @@ const LoginPage = () => {
       localStorage.setItem('access_token', accessToken);
       localStorage.setItem('refresh_token', refreshToken);
 
-      navigate('/dashboard');
+      let userProfile =
+        tokenData?.user ||
+        tokenData?.currentUser ||
+        tokenData?.profile ||
+        null;
+
+      if (!userProfile) {
+        try {
+          const meRes = await axiosClient.get('/profile/me');
+          userProfile = meRes.data?.data ?? meRes.data ?? null;
+        } catch {
+          userProfile = null;
+        }
+      }
+
+      const jwtClaims = decodeJwtPayload(accessToken);
+      const roles = extractRolesFromPayload(
+        { ...tokenData, ...(jwtClaims || {}) },
+        userProfile
+      );
+
+      const primaryRole =
+        roles.find((r) => r === 'ROLE_SUPER_ADMIN') ||
+        roles.find((r) => r === 'ROLE_NETWORK_ADMIN') ||
+        roles.find((r) => r === 'ROLE_NOC_OPERATOR') ||
+        roles.find((r) => r === 'ROLE_REPORT_MANAGER') ||
+        roles[0] ||
+        normalizeRole(userProfile?.roleName) ||
+        'ROLE_GUEST_VIEWER';
+
+      const currentUser = {
+        ...(userProfile || {}),
+        id: userProfile?.id ?? tokenData?.userId ?? tokenData?.id ?? jwtClaims?.sub ?? null,
+        username: userProfile?.username || tokenData?.username || jwtClaims?.preferred_username || trimmedUsername,
+        roleName: primaryRole,
+        roles,
+      };
+
+      localStorage.setItem('user_role', primaryRole);
+      localStorage.setItem('user_roles', JSON.stringify(roles));
+      localStorage.setItem('current_user', JSON.stringify(currentUser));
+
+      if (typeof onLoginSuccess === 'function') {
+        onLoginSuccess(currentUser);
+      }
+
+      navigate('/dashboard', {
+        state: { currentUser, roles, roleName: primaryRole },
+      });
     } catch (error) {
       setErrorMsg(
         error.response?.data?.message ||

@@ -8,6 +8,9 @@ import StepEmail from './steps/StepEmail';
 import StepOtp from './steps/StepOtp';
 import StepResetPwd from './steps/StepResetPwd';
 
+const PASSWORD_POLICY_REGEX =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
+
 const ForgotPwdPage = () => {
   const navigate = useNavigate();
 
@@ -106,6 +109,11 @@ const ForgotPwdPage = () => {
     e.preventDefault();
     clearMessages();
     if (!newPassword) return setErrorMsg('Vui lòng nhập mật khẩu mới.');
+    if (!PASSWORD_POLICY_REGEX.test(newPassword)) {
+      return setErrorMsg(
+        'Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, chữ số và ký tự đặc biệt.'
+      );
+    }
     if (newPassword !== confirmPassword) return setErrorMsg('Mật khẩu xác nhận không khớp.');
 
     setLoading(true);
@@ -136,7 +144,6 @@ const ForgotPwdPage = () => {
           <h2 className="auth-title">{titles[step - 1]}</h2>
         </div>
 
-        {/* Step Indicator */}
         <div className="step-indicator">
           {['Email', 'OTP', 'Mật khẩu'].map((label, idx) => (
             <React.Fragment key={idx}>
@@ -149,7 +156,6 @@ const ForgotPwdPage = () => {
           ))}
         </div>
 
-        {/* Alerts */}
         {errorMsg && (
           <div className="forgot-error">
             <svg viewBox="0 0 20 20" fill="currentColor">
@@ -168,7 +174,6 @@ const ForgotPwdPage = () => {
           </div>
         )}
 
-        {/* Dynamic Steps */}
         {step === 1 && (
           <StepEmail
             email={email}

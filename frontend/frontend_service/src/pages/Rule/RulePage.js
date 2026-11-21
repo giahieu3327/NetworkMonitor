@@ -1,8 +1,162 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { axiosClient } from '../../api/axiosClient';
 import '../../styles/common.css';
 import './RulePage.css';
+
+const ALLOWED_VIEW_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+  'ROLE_GUEST_VIEWER',
+]);
+
+const RULE_MANAGE_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+
+  const trimmed = role.trim().toUpperCase();
+
+  if (!trimmed) return '';
+
+  return trimmed.startsWith('ROLE_')
+    ? trimmed
+    : `ROLE_${trimmed}`;
+};
+
+const getRoleValue = (role) => {
+  if (typeof role === 'string') {
+    return role;
+  }
+
+  if (role && typeof role === 'object') {
+    return (
+      role.authority ||
+      role.roleName ||
+      role.role_name ||
+      role.name ||
+      role.role ||
+      ''
+    );
+  }
+
+  return '';
+};
+
+const getUserRoles = (user) => {
+  const roles = new Set();
+
+  if (!user || typeof user !== 'object') {
+    return roles;
+  }
+
+  const singleRoleFields = [
+    user.roleName,
+    user.role_name,
+    user.role,
+    user.authority,
+  ];
+
+  singleRoleFields.forEach((role) => {
+    const normalized = normalizeRole(getRoleValue(role));
+
+    if (normalized) {
+      roles.add(normalized);
+    }
+  });
+
+  const roleArrayFields = [
+    user.roles,
+    user.authorities,
+    user.realmRoles,
+    user.realm_roles,
+    user.realm_access?.roles,
+  ];
+
+  roleArrayFields.forEach((roleArray) => {
+    if (Array.isArray(roleArray)) {
+      roleArray.forEach((role) => {
+        const normalized = normalizeRole(getRoleValue(role));
+
+        if (normalized) {
+          roles.add(normalized);
+        }
+      });
+    }
+  });
+
+  if (typeof user.scope === 'string') {
+    user.scope
+      .split(/[\s,]+/)
+      .map((r) => normalizeRole(r))
+      .filter(Boolean)
+      .forEach((r) => roles.add(r));
+  }
+
+  return roles;
+};
+
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const jsonStr = decodeURIComponent(
+      atob(padded)
+        .split('')
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join('')
+    );
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+};
+
+const readStoredUser = () => {
+  try {
+    const rawUser = localStorage.getItem('current_user');
+    if (rawUser) {
+      return JSON.parse(rawUser);
+    }
+  } catch {
+  }
+
+  const storedRole = localStorage.getItem('user_role');
+  let storedRoles = [];
+  try {
+    const rawRoles = localStorage.getItem('user_roles');
+    if (rawRoles) {
+      const parsed = JSON.parse(rawRoles);
+      if (Array.isArray(parsed)) storedRoles = parsed;
+    }
+  } catch {
+  }
+
+  if (storedRole || storedRoles.length > 0) {
+    return {
+      roleName: storedRole || '',
+      roles: storedRoles,
+    };
+  }
+
+  const accessToken = localStorage.getItem('access_token');
+  if (accessToken) {
+    const claims = decodeJwtPayload(accessToken);
+    if (claims) {
+      return claims;
+    }
+  }
+
+  return null;
+};
 
 const getResponseData = (response) => {
   return response?.data?.data ?? response?.data ?? null;
@@ -15,9 +169,107 @@ const formatDateTime = (isoString) => {
   return date.toLocaleString('vi-VN');
 };
 
-const RulePage = () => {
+const RulePage = ({
+  currentUser,
+  canManageDevices: canManageDevicesProp,
+  canManageRules: canManageRulesProp,
+}) => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const passedUser =
+    currentUser || location.state?.currentUser || null;
+
+  const [profileUser, setProfileUser] = useState(
+    () => passedUser || readStoredUser()
+  );
+  const [profileResolved, setProfileResolved] = useState(
+    Boolean(passedUser)
+  );
+  const [profileError, setProfileError] = useState('');
+
+  useEffect(() => {
+    if (passedUser) {
+      setProfileUser(passedUser);
+      setProfileResolved(true);
+      setProfileError('');
+    }
+  }, [passedUser]);
+
+  useEffect(() => {
+    if (passedUser) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchCurrentUser = async () => {
+      const accessToken = localStorage.getItem('access_token');
+      if (!accessToken) {
+        if (!cancelled) {
+          setProfileUser(null);
+          setProfileResolved(true);
+        }
+        return;
+      }
+
+      try {
+        setProfileResolved(false);
+        setProfileError('');
+
+        const response = await axiosClient.get('/profile/me');
+        const data = getResponseData(response);
+
+        if (!cancelled) {
+          setProfileUser(data);
+          setProfileResolved(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const fallbackUser = readStoredUser();
+          setProfileUser(fallbackUser);
+          if (!fallbackUser) {
+            setProfileError(
+              err.response?.data?.message ||
+                'Không thể xác định quyền người dùng.'
+            );
+          }
+          setProfileResolved(true);
+        }
+      }
+    };
+
+    fetchCurrentUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [passedUser]);
+
+  const effectiveUser = passedUser || profileUser;
+
+  const userRoles = useMemo(() => {
+    return getUserRoles(effectiveUser);
+  }, [effectiveUser]);
+
+  const canViewRule = useMemo(() => {
+    return Array.from(userRoles).some((role) =>
+      ALLOWED_VIEW_ROLES.has(role)
+    );
+  }, [userRoles]);
+
+  const canManageRules = useMemo(() => {
+    if (typeof canManageRulesProp === 'boolean') {
+      return canManageRulesProp;
+    }
+    if (typeof canManageDevicesProp === 'boolean') {
+      return canManageDevicesProp;
+    }
+    return Array.from(userRoles).some((role) =>
+      RULE_MANAGE_ROLES.has(role)
+    );
+  }, [canManageRulesProp, canManageDevicesProp, userRoles]);
 
   const [rule, setRule] = useState(null);
   const [allowedMetrics, setAllowedMetrics] = useState([]);
@@ -58,12 +310,20 @@ const RulePage = () => {
       );
       const list = getResponseData(res);
       setAllowedMetrics(Array.isArray(list) ? list : []);
-    } catch (err) {
-      console.error('Lỗi tải danh sách allowed metrics:', err);
+    } catch {
     }
   }, []);
 
   const fetchRule = useCallback(async () => {
+    if (!profileResolved) {
+      return;
+    }
+
+    if (!canViewRule) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setErrorMsg('');
@@ -98,13 +358,13 @@ const RulePage = () => {
     } finally {
       setLoading(false);
     }
-  }, [id, fetchAllowedMetrics]);
+  }, [id, canViewRule, profileResolved, fetchAllowedMetrics]);
 
   useEffect(() => {
-    if (id) {
+    if (id && profileResolved) {
       fetchRule();
     }
-  }, [id, fetchRule]);
+  }, [id, profileResolved, fetchRule]);
 
   const currentMetricMeta = useMemo(
     () =>
@@ -131,6 +391,8 @@ const RulePage = () => {
   };
 
   const handleEditOpen = () => {
+    if (!canManageRules) return;
+
     setErrorMsg('');
     setSuccessMsg('');
     setEditForm({
@@ -206,6 +468,8 @@ const RulePage = () => {
 
   const handleUpdateRule = async (e) => {
     e.preventDefault();
+    if (!canManageRules) return;
+
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -240,6 +504,8 @@ const RulePage = () => {
   };
 
   const handleDelete = async () => {
+    if (!canManageRules) return;
+
     if (
       !window.confirm(
         `Bạn có chắc chắn muốn xóa luật cảnh báo [${rule?.metricType || id}]?`
@@ -264,7 +530,7 @@ const RulePage = () => {
     }
   };
 
-  if (loading) {
+  if (!profileResolved || loading) {
     return (
       <div className={`auth-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
         <div className="button-loading-state" style={{ color: 'var(--primary)' }}>
@@ -272,8 +538,51 @@ const RulePage = () => {
             className="spinner"
             style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent' }}
           />
-          Đang tải luật cảnh báo...
+          {!profileResolved
+            ? 'Đang xác định quyền người dùng...'
+            : 'Đang tải luật cảnh báo...'}
         </div>
+      </div>
+    );
+  }
+
+  if (!canViewRule) {
+    return (
+      <div className={`rule-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+        <header className="rule-header">
+          <div className="rule-header-left">
+            <button
+              type="button"
+              className="rule-back-button"
+              onClick={handleBack}
+              title="Quay lại"
+            >
+              ←
+            </button>
+            <h2>CHI TIẾT LUẬT CẢNH BÁO</h2>
+          </div>
+        </header>
+        <main className="rule-main">
+          <div className="rule-card">
+            <div className="permission-denied-box">
+              <div className="permission-denied-icon">!</div>
+              <h2 className="permission-denied-title">Không có quyền truy cập</h2>
+              <p className="permission-message">
+                {profileError ||
+                  'Bạn không có quyền xem luật cảnh báo của thiết bị này.'}
+              </p>
+            </div>
+            <div className="rule-actions">
+              <button
+                type="button"
+                className="rule-cancel-btn"
+                onClick={handleBack}
+              >
+                Quay lại
+              </button>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
@@ -423,30 +732,32 @@ const RulePage = () => {
               </div>
             </div>
 
-            <div className="rule-actions">
-              <button
-                type="button"
-                className="btn-delete-rule"
-                onClick={handleDelete}
-                disabled={deleting || saving}
-              >
-                {deleting ? 'Đang xóa...' : 'Xóa Luật'}
-              </button>
+            {canManageRules && (
+              <div className="rule-actions">
+                <button
+                  type="button"
+                  className="btn-delete-rule"
+                  onClick={handleDelete}
+                  disabled={deleting || saving}
+                >
+                  {deleting ? 'Đang xóa...' : 'Xóa Luật'}
+                </button>
 
-              <button
-                type="button"
-                className="btn-edit-rule"
-                onClick={handleEditOpen}
-                disabled={deleting || saving}
-              >
-                Chỉnh Sửa Thông Tin
-              </button>
-            </div>
+                <button
+                  type="button"
+                  className="btn-edit-rule"
+                  onClick={handleEditOpen}
+                  disabled={deleting || saving}
+                >
+                  Chỉnh Sửa Thông Tin
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>
 
-      {isEditModalOpen && (
+      {canManageRules && isEditModalOpen && (
         <div className="rule-modal-overlay">
           <div className="rule-modal-card">
             <div className="rule-modal-header">
