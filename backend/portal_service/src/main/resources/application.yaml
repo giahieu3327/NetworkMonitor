@@ -175,7 +175,7 @@ app:
 # 13. Stalwart REST API
 # ==============================================================
 stalwart:
-  api-url: ${STALWART_API_URL:http://localhost:8080}
+  api-url: ${STALWART_API_URL:http://localhost:8090}
   admin-user: ${STALWART_ADMIN_USER:admin@monitor.com}
   admin-password: ${STALWART_ADMIN_PASSWORD:Admin@123456}
   domain: ${STALWART_MAIL_DOMAIN:monitor.com}
