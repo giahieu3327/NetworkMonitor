@@ -11,6 +11,20 @@ import {
 import { axiosClient } from '../../../api/axiosClient';
 import './TabDeviceMetrics.css';
 
+const ALLOWED_VIEW_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+  'ROLE_GUEST_VIEWER',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
 const formatTimeMinute = (dateObj) => {
   const hh = String(dateObj.getHours()).padStart(2, '0');
   const mm = String(dateObj.getMinutes()).padStart(2, '0');
@@ -34,14 +48,36 @@ const getMsUntilNext15thSecond = () => {
   return target.getTime() - now.getTime();
 };
 
-const TabDeviceCpu = ({ deviceId }) => {
+const TabDeviceCpu = ({ deviceId, currentUser }) => {
+  const userRoles = useMemo(() => {
+    const roles = new Set();
+
+    if (currentUser?.roleName) {
+      roles.add(normalizeRole(currentUser.roleName));
+    }
+
+    if (Array.isArray(currentUser?.roles)) {
+      currentUser.roles.forEach((role) => {
+        const normalized = normalizeRole(role);
+        if (normalized) roles.add(normalized);
+      });
+    }
+
+    return roles;
+  }, [currentUser]);
+
+  const canViewCpu = useMemo(() => {
+    if (!currentUser) return true;
+    return Array.from(userRoles).some((role) => ALLOWED_VIEW_ROLES.has(role));
+  }, [currentUser, userRoles]);
+
   const [latestData, setLatestData] = useState(null);
   const [historyData, setHistoryData] = useState([]);
   const [selectedSlot, setSelectedSlot] = useState('');
   const [loading, setLoading] = useState(true);
 
   const fetchMetrics = useCallback(async (isInitial = false) => {
-    if (!deviceId) return;
+    if (!deviceId || !canViewCpu) return;
     if (isInitial) setLoading(true);
 
     try {
@@ -64,9 +100,14 @@ const TabDeviceCpu = ({ deviceId }) => {
     } finally {
       if (isInitial) setLoading(false);
     }
-  }, [deviceId]);
+  }, [deviceId, canViewCpu]);
 
   useEffect(() => {
+    if (!canViewCpu) {
+      setLoading(false);
+      return;
+    }
+
     fetchMetrics(true);
 
     let intervalId = null;
@@ -81,7 +122,7 @@ const TabDeviceCpu = ({ deviceId }) => {
       clearTimeout(timeoutId);
       if (intervalId) clearInterval(intervalId);
     };
-  }, [fetchMetrics]);
+  }, [fetchMetrics, canViewCpu]);
 
   const availableSlots = useMemo(() => {
     const cpuVal = latestData?.cpu_usage?.value;
@@ -211,6 +252,14 @@ const TabDeviceCpu = ({ deviceId }) => {
 
     return filledPoints;
   }, [historyData, selectedSlot]);
+
+  if (!canViewCpu) {
+    return (
+      <div className="permission-message">
+        Bạn không có quyền xem thông số CPU của thiết bị này.
+      </div>
+    );
+  }
 
   if (loading) {
     return (

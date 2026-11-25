@@ -5,6 +5,20 @@ import './TabDeviceInterfaces.css';
 
 const PAGE_SIZE = 10;
 
+const ALLOWED_VIEW_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+  'ROLE_GUEST_VIEWER',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
 const INTERFACE_TYPE_MAP = {
   1: 'Khác (Other)',
   6: 'Ethernet',
@@ -25,8 +39,30 @@ const formatInterfaceType = (type) => {
   return INTERFACE_TYPE_MAP[type] || `UNKNOWN (${type})`;
 };
 
-const TabDeviceInterfaces = ({ deviceId, device }) => {
+const TabDeviceInterfaces = ({ deviceId, device, currentUser }) => {
   const navigate = useNavigate();
+
+  const userRoles = useMemo(() => {
+    const roles = new Set();
+
+    if (currentUser?.roleName) {
+      roles.add(normalizeRole(currentUser.roleName));
+    }
+
+    if (Array.isArray(currentUser?.roles)) {
+      currentUser.roles.forEach((role) => {
+        const normalized = normalizeRole(role);
+        if (normalized) roles.add(normalized);
+      });
+    }
+
+    return roles;
+  }, [currentUser]);
+
+  const canViewInterfaces = useMemo(() => {
+    if (!currentUser) return true;
+    return Array.from(userRoles).some((role) => ALLOWED_VIEW_ROLES.has(role));
+  }, [currentUser, userRoles]);
 
   const [interfaces, setInterfaces] = useState([]);
   const [totalElements, setTotalElements] = useState(0);
@@ -43,7 +79,7 @@ const TabDeviceInterfaces = ({ deviceId, device }) => {
   });
 
   const fetchInterfaces = useCallback(async () => {
-    if (!deviceId) return;
+    if (!deviceId || !canViewInterfaces) return;
 
     try {
       const res = await axiosClient.get(`/devices/${deviceId}/interfaces`, {
@@ -77,7 +113,7 @@ const TabDeviceInterfaces = ({ deviceId, device }) => {
       setTotalElements(0);
       setTotalPages(1);
     }
-  }, [deviceId, searchParams]);
+  }, [deviceId, canViewInterfaces, searchParams]);
 
   useEffect(() => {
     fetchInterfaces();
@@ -211,6 +247,14 @@ const TabDeviceInterfaces = ({ deviceId, device }) => {
     );
   };
 
+  if (!canViewInterfaces) {
+    return (
+      <div className="permission-message">
+        Bạn không có quyền xem danh sách interface của thiết bị này.
+      </div>
+    );
+  }
+
   const startItem = totalElements === 0 ? 0 : searchParams.page * PAGE_SIZE + 1;
   const endItem = Math.min((searchParams.page + 1) * PAGE_SIZE, totalElements);
 
@@ -303,7 +347,13 @@ const TabDeviceInterfaces = ({ deviceId, device }) => {
                   onClick={() =>
                     navigate(
                       `/devices/${deviceId}/interfaces/${item.interfaceIndex}`,
-                      { state: { device, interfaceItem: item } }
+                      {
+                        state: {
+                          device,
+                          interfaceItem: item,
+                          currentUser,
+                        },
+                      }
                     )
                   }
                 >

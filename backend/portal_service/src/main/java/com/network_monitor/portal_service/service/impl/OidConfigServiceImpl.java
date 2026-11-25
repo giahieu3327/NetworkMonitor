@@ -1,4 +1,3 @@
-
 package com.network_monitor.portal_service.service.impl;
 
 import com.network_monitor.portal_service.mapper.OidConfigMapper;
@@ -6,6 +5,7 @@ import com.network_monitor.portal_service.model.dto.request.OidConfigRequest;
 import com.network_monitor.portal_service.model.dto.request.SearchRequest;
 import com.network_monitor.portal_service.model.dto.response.ApiResponse;
 import com.network_monitor.portal_service.model.dto.response.OidConfigResponse;
+import com.network_monitor.portal_service.model.entity.ApprovalTicket;
 import com.network_monitor.portal_service.model.entity.Device;
 import com.network_monitor.portal_service.model.entity.DeviceInterface;
 import com.network_monitor.portal_service.model.entity.OidConfig;
@@ -13,8 +13,8 @@ import com.network_monitor.portal_service.repository.DeviceInterfaceRepository;
 import com.network_monitor.portal_service.repository.DeviceRepository;
 import com.network_monitor.portal_service.repository.OidConfigRepository;
 import com.network_monitor.portal_service.service.OidConfigService;
-import com.network_monitor.portal_service.service.SnmpService;
 import com.network_monitor.portal_service.util.SearchRequestUtils;
+import com.network_monitor.portal_service.workflow.ApprovalWorkflowService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,44 +26,49 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class OidConfigServiceImpl implements OidConfigService {
 
+    private static final String ENTITY_TYPE = "OID_CONFIG";
+    private static final String ADMIN_USERNAME = "admin";
+    private static final String SUPER_ADMIN_ROLE = "ROLE_SUPER_ADMIN";
     private static final String OID_KIND_SINGLE = "SINGLE";
     private static final String OID_KIND_TABLE_COLUMN = "TABLE_COLUMN";
+    private static final Set<String> VALID_SCOPES = Set.of("DEVICE", "INTERFACE", "METRIC", "ARP");
 
     private final OidConfigRepository oidConfigRepository;
     private final DeviceRepository deviceRepository;
     private final DeviceInterfaceRepository deviceInterfaceRepository;
     private final OidConfigMapper oidConfigMapper;
-    private final SnmpService snmpService;
-
-    // =========================================================
-    // CREATE
-    // =========================================================
+    private final ApprovalWorkflowService approvalWorkflowService;
 
     @Override
+    @Transactional
     public ApiResponse<OidConfigResponse> createOidConfig(
             OidConfigRequest request) {
         try {
-            if (request == null) {
-                throw new IllegalArgumentException(
-                        "OID config request không được để trống"
-                );
-            }
+            validateCreateRequest(request);
 
             Device device = deviceRepository.findById(request.getDeviceId())
                     .orElseThrow(() ->
@@ -71,36 +76,33 @@ public class OidConfigServiceImpl implements OidConfigService {
                                     "Không tìm thấy thiết bị"
                             ));
 
-            String oidKind = normalizeOidKind(request.getOidKind());
+            normalizeCreateDefaults(request);
+            validateInterfaceExists(device.getId(), request.getInterfaceIndex());
 
-            OidConfig config = OidConfig.builder()
-                    .metricScope(request.getMetricScope())
-                    .metricType(request.getMetricType())
-                    .oidKind(oidKind)
-                    .oidPattern(request.getOidPattern())
-                    .dataType(request.getDataType())
-                    .multiplier(request.getMultiplier() == null
-                            ? 1.0
-                            : request.getMultiplier())
-                    .device(device)
-                    .isActive(request.getIsActive() == null
-                            ? Boolean.TRUE
-                            : request.getIsActive())
-                    .build();
+            if (isSuperAdminAccount()) {
+                OidConfig saved = insertOidConfigDirectly(device, request);
+                return ApiResponse.success(
+                        "Thêm OID config thành công",
+                        toResponse(saved)
+                );
+            }
 
-            setInterface(
-                    config,
-                    device,
-                    request.getInterfaceIndex()
+            ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                    ENTITY_TYPE,
+                    "CREATE",
+                    null,
+                    device.getId(),
+                    "Thêm OID Config '" + request.getMetricType()
+                            + "' (" + request.getMetricScope() + ") cho thiết bị "
+                            + device.getDeviceName(),
+                    null,
+                    request
             );
 
-            OidConfig saved = oidConfigRepository.saveAndFlush(config);
-
-            snmpService.reloadConfigs();
-
             return ApiResponse.success(
-                    "Tạo OID config thành công",
-                    toResponse(saved)
+                    "Đã tạo ticket #" + ticket.getId()
+                            + " yêu cầu thêm OID config, chờ Checker phê duyệt",
+                    null
             );
 
         } catch (Exception e) {
@@ -109,126 +111,140 @@ public class OidConfigServiceImpl implements OidConfigService {
         }
     }
 
-    // =========================================================
-    // IMPORT EXCEL
-    //
-    // Column order:
-    // 0 Metric Scope
-    // 1 Metric Type
-    // 2 OID Kind
-    // 3 OID Pattern
-    // 4 Data Type
-    // 5 Multiplier
-    // 6 Device ID
-    // 7 Interface Index
-    // 8 Is Active
-    // =========================================================
+    @Override
+    @Transactional
+    public ApiResponse<Map<String, Object>> createOidConfigsFromExcel(
+            Long id,
+            MultipartFile file) {
 
-        @Override
-        public ApiResponse<Map<String, Object>> createOidConfigsFromExcel(
-                Long id,
-                MultipartFile file) {
+        if (id == null) {
+            return ApiResponse.error("Device ID không được để trống");
+        }
 
-        if (id == null || !deviceRepository.existsById(id)) {
-                return ApiResponse.error("Không tìm thấy thiết bị");
+        Device device = deviceRepository.findById(id).orElse(null);
+        if (device == null) {
+            return ApiResponse.error("Không tìm thấy thiết bị");
         }
 
         if (file == null || file.isEmpty()) {
-                return ApiResponse.error("File Excel không được để trống");
+            return ApiResponse.error("File Excel không được để trống");
         }
+
+        boolean bypassApproval = isSuperAdminAccount();
 
         int totalRows = 0;
         int successCount = 0;
         int failedCount = 0;
         int skippedCount = 0;
 
+        List<OidConfigRequest> validRequests = new ArrayList<>();
         List<Map<String, Object>> errors = new ArrayList<>();
 
         try (InputStream input = file.getInputStream();
-                Workbook workbook = WorkbookFactory.create(input)) {
+             Workbook workbook = WorkbookFactory.create(input)) {
 
-                if (workbook.getNumberOfSheets() == 0) {
+            if (workbook.getNumberOfSheets() == 0) {
                 return ApiResponse.error(
                         "File Excel không có sheet dữ liệu"
                 );
-                }
+            }
 
-                Sheet sheet = workbook.getSheetAt(0);
-                DataFormatter formatter = new DataFormatter();
+            Sheet sheet = workbook.getSheet("OID Configs");
+            if (sheet == null) {
+                sheet = workbook.getSheetAt(0);
+            }
 
-                for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+            DataFormatter formatter = new DataFormatter();
+
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
 
                 if (isEmptyRow(row, formatter, 8)) {
-                        skippedCount++;
-                        continue;
+                    skippedCount++;
+                    continue;
                 }
 
                 totalRows++;
 
                 try {
-                        OidConfigRequest request =
-                                readRequestFromExcel(row, formatter);
+                    OidConfigRequest request =
+                            readRequestFromExcel(row, formatter);
 
-                        // Lấy Device ID từ URL, không lấy từ Excel.
-                        request.setDeviceId(id);
+                    request.setDeviceId(id);
+                    validateCreateRequest(request);
+                    normalizeCreateDefaults(request);
+                    validateInterfaceExists(id, request.getInterfaceIndex());
 
-                        ApiResponse<OidConfigResponse> response =
-                                createOidConfig(request);
+                    if (bypassApproval) {
+                        insertOidConfigDirectly(device, request);
+                    } else {
+                        validRequests.add(request);
+                    }
 
-                        if (response != null && response.isSuccess()) {
-                        successCount++;
-                        } else {
-                        failedCount++;
-
-                        Map<String, Object> error = new LinkedHashMap<>();
-                        error.put("row", i + 1);
-                        error.put(
-                                "message",
-                                response == null
-                                        ? "Không thể tạo OID config"
-                                        : response.getMessage()
-                        );
-
-                        errors.add(error);
-                        }
+                    successCount++;
 
                 } catch (Exception e) {
-                        failedCount++;
+                    failedCount++;
 
-                        Map<String, Object> error = new LinkedHashMap<>();
-                        error.put("row", i + 1);
-                        error.put("message", getErrorMessage(e));
+                    Map<String, Object> error = new LinkedHashMap<>();
+                    error.put("row", i + 1);
+                    error.put("message", getErrorMessage(e));
 
-                        errors.add(error);
+                    errors.add(error);
                 }
-                }
+            }
 
-        } catch (Exception e) {
-                log.error(
-                        "Import OID configs from Excel failed: deviceId={}",
-                        id,
-                        e
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("totalRows", totalRows);
+            result.put("successCount", successCount);
+            result.put("failedCount", failedCount);
+            result.put("skippedCount", skippedCount);
+            result.put("errors", errors);
+
+            if (bypassApproval) {
+                return ApiResponse.success(
+                        "Import OID config từ Excel hoàn tất",
+                        result
+                );
+            }
+
+            if (!validRequests.isEmpty()) {
+                ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                        ENTITY_TYPE,
+                        "BULK_IMPORT",
+                        null,
+                        device.getId(),
+                        "Import " + validRequests.size()
+                                + " OID Config từ Excel cho thiết bị "
+                                + device.getDeviceName(),
+                        null,
+                        validRequests
                 );
 
-                return ApiResponse.error(getErrorMessage(e));
+                result.put("ticketId", ticket.getId());
+                result.put("processInstanceId", ticket.getProcessInstanceId());
+            }
+
+            return ApiResponse.success(
+                    validRequests.isEmpty()
+                            ? "Không có dòng dữ liệu hợp lệ để tạo ticket"
+                            : "Đã tạo ticket import Excel, chờ Checker phê duyệt",
+                    result
+            );
+
+        } catch (Exception e) {
+            log.error(
+                    "Import OID configs failed: deviceId={}",
+                    id,
+                    e
+            );
+
+            return ApiResponse.error(getErrorMessage(e));
         }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("totalRows", totalRows);
-        result.put("successCount", successCount);
-        result.put("failedCount", failedCount);
-        result.put("skippedCount", skippedCount);
-        result.put("errors", errors);
-
-        return ApiResponse.success("Import Excel hoàn tất", result);
-        }
-
-    // =========================================================
-    // UPDATE
-    // =========================================================
+    }
 
     @Override
+    @Transactional
     public ApiResponse<Void> updateOidConfig(
             Long id,
             OidConfigRequest request) {
@@ -239,72 +255,93 @@ public class OidConfigServiceImpl implements OidConfigService {
                 );
             }
 
-            OidConfig config = oidConfigRepository.findById(id)
+            OidConfig existing = oidConfigRepository.findById(id)
                     .orElseThrow(() ->
                             new IllegalArgumentException(
                                     "Không tìm thấy OID config"
                             ));
 
-            if (request.getMetricScope() != null) {
-                config.setMetricScope(request.getMetricScope());
+            String effectiveScope = request.getMetricScope() != null
+                    ? normalizeMetricScope(request.getMetricScope())
+                    : existing.getMetricScope();
+
+            String effectiveKind = request.getOidKind() != null
+                    ? normalizeOidKind(request.getOidKind())
+                    : existing.getOidKind();
+
+            Double effectiveMultiplier = request.getMultiplier() != null
+                    ? request.getMultiplier()
+                    : existing.getMultiplier();
+
+            if (effectiveMultiplier == null || !Double.isFinite(effectiveMultiplier) || effectiveMultiplier <= 0) {
+                throw new IllegalArgumentException("Multiplier phải lớn hơn 0");
             }
 
-            if (request.getMetricType() != null) {
-                config.setMetricType(request.getMetricType());
-            }
-
-            if (request.getOidKind() != null) {
-                config.setOidKind(
-                        normalizeOidKind(request.getOidKind())
-                );
-            }
-
-            if (request.getOidPattern() != null) {
-                config.setOidPattern(request.getOidPattern());
-            }
-
-            if (request.getDataType() != null) {
-                config.setDataType(request.getDataType());
-            }
-
-            if (request.getMultiplier() != null) {
-                config.setMultiplier(request.getMultiplier());
-            }
-
-            if (request.getIsActive() != null) {
-                config.setIsActive(request.getIsActive());
-            }
-
+            Device targetDevice = existing.getDevice();
             if (request.getDeviceId() != null) {
-                Device device = deviceRepository.findById(
-                        request.getDeviceId()
-                ).orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Không tìm thấy thiết bị"
-                        ));
+                targetDevice = deviceRepository.findById(request.getDeviceId())
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Không tìm thấy thiết bị"
+                                ));
+            }
 
-                config.setDevice(device);
+            Integer effectiveInterfaceIndex = request.getInterfaceIndex() != null
+                    ? request.getInterfaceIndex()
+                    : (request.getDeviceId() != null ? null : existing.getInterfaceIndex());
 
-                setInterface(
-                        config,
-                        device,
-                        request.getInterfaceIndex()
-                );
+            validateScopeAndInterface(effectiveScope, effectiveInterfaceIndex);
+            validateInterfaceExists(targetDevice.getId(), effectiveInterfaceIndex);
 
-            } else if (request.getInterfaceIndex() != null) {
-                setInterface(
-                        config,
-                        config.getDevice(),
-                        request.getInterfaceIndex()
+            if (request.getMetricScope() != null) {
+                request.setMetricScope(effectiveScope);
+            }
+            if (request.getOidKind() != null) {
+                request.setOidKind(effectiveKind);
+            }
+
+            if (isSuperAdminAccount()) {
+                existing.setDevice(targetDevice);
+                existing.setMetricScope(effectiveScope);
+                if (request.getMetricType() != null && !request.getMetricType().isBlank()) {
+                    existing.setMetricType(request.getMetricType().trim());
+                }
+                existing.setOidKind(effectiveKind);
+                if (request.getOidPattern() != null && !request.getOidPattern().isBlank()) {
+                    existing.setOidPattern(request.getOidPattern().trim());
+                }
+                if (request.getDataType() != null && !request.getDataType().isBlank()) {
+                    existing.setDataType(request.getDataType().trim());
+                }
+                existing.setMultiplier(effectiveMultiplier);
+                existing.setInterfaceIndex(effectiveInterfaceIndex);
+                if (request.getIsActive() != null) {
+                    existing.setIsActive(request.getIsActive());
+                }
+                existing.setUpdatedAt(OffsetDateTime.now());
+
+                oidConfigRepository.saveAndFlush(existing);
+
+                return ApiResponse.success(
+                        "Cập nhật OID config thành công",
+                        null
                 );
             }
 
-            oidConfigRepository.saveAndFlush(config);
-
-            snmpService.reloadConfigs();
+            ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                    ENTITY_TYPE,
+                    "UPDATE",
+                    existing.getId(),
+                    targetDevice.getId(),
+                    "Cập nhật OID Config ID=" + id
+                            + " (" + existing.getMetricType() + ")",
+                    toResponse(existing),
+                    request
+            );
 
             return ApiResponse.success(
-                    "Cập nhật OID config thành công",
+                    "Đã tạo ticket #" + ticket.getId()
+                            + " yêu cầu cập nhật OID config, chờ Checker phê duyệt",
                     null
             );
 
@@ -314,11 +351,8 @@ public class OidConfigServiceImpl implements OidConfigService {
         }
     }
 
-    // =========================================================
-    // DELETE
-    // =========================================================
-
     @Override
+    @Transactional
     public ApiResponse<Void> deleteOidConfig(Long id) {
         try {
             OidConfig config = oidConfigRepository.findById(id)
@@ -327,12 +361,34 @@ public class OidConfigServiceImpl implements OidConfigService {
                                     "Không tìm thấy OID config"
                             ));
 
-            oidConfigRepository.delete(config);
+            if (isSuperAdminAccount()) {
+                oidConfigRepository.delete(config);
+                oidConfigRepository.flush();
 
-            snmpService.reloadConfigs();
+                return ApiResponse.success(
+                        "Xóa OID config thành công",
+                        null
+                );
+            }
+
+            Long parentDeviceId = config.getDevice() != null
+                    ? config.getDevice().getId()
+                    : null;
+
+            ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                    ENTITY_TYPE,
+                    "DELETE",
+                    config.getId(),
+                    parentDeviceId,
+                    "Xóa OID Config ID=" + id
+                            + " (" + config.getMetricType() + ")",
+                    toResponse(config),
+                    null
+            );
 
             return ApiResponse.success(
-                    "Xóa OID config thành công",
+                    "Đã tạo ticket #" + ticket.getId()
+                            + " yêu cầu xóa OID config, chờ Checker phê duyệt",
                     null
             );
 
@@ -343,25 +399,51 @@ public class OidConfigServiceImpl implements OidConfigService {
     }
 
     @Override
+    @Transactional
     public ApiResponse<Void> deleteOidConfigsByDeviceId(Long deviceId) {
         try {
-            if (!deviceRepository.existsById(deviceId)) {
-                return ApiResponse.error("Không tìm thấy thiết bị");
-            }
+            Device device = deviceRepository.findById(deviceId)
+                    .orElseThrow(() ->
+                            new IllegalArgumentException(
+                                    "Không tìm thấy thiết bị"
+                            ));
 
             List<OidConfig> configs =
                     oidConfigRepository.findByDevice_Id(deviceId);
 
-            if (!configs.isEmpty()) {
-                oidConfigRepository.deleteAll(configs);
+            if (configs.isEmpty()) {
+                return ApiResponse.error("Thiết bị không có OID config để xóa");
             }
 
-            snmpService.reloadConfigs();
-            
+            if (isSuperAdminAccount()) {
+                oidConfigRepository.deleteAllInBatch(configs);
+                oidConfigRepository.flush();
+
+                return ApiResponse.success(
+                        "Đã xóa toàn bộ " + configs.size()
+                                + " OID config của thiết bị " + device.getDeviceName(),
+                        null
+                );
+            }
+
+            List<OidConfigResponse> snapshots = configs.stream()
+                    .map(this::toResponse)
+                    .toList();
+
+            ApprovalTicket ticket = approvalWorkflowService.submitTicket(
+                    ENTITY_TYPE,
+                    "BULK_DELETE",
+                    null,
+                    device.getId(),
+                    "Xóa toàn bộ " + configs.size()
+                            + " OID Config của thiết bị " + device.getDeviceName(),
+                    snapshots,
+                    null
+            );
+
             return ApiResponse.success(
-                    configs.isEmpty()
-                            ? "Thiết bị không có OID config để xóa"
-                            : "Xóa OID config của thiết bị thành công",
+                    "Đã tạo ticket #" + ticket.getId()
+                            + " yêu cầu xóa OID config của thiết bị, chờ Checker phê duyệt",
                     null
             );
 
@@ -375,9 +457,68 @@ public class OidConfigServiceImpl implements OidConfigService {
         }
     }
 
-    // =========================================================
-    // GET BY ID
-    // =========================================================
+    private boolean isSuperAdminAccount() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+
+        String username = null;
+        boolean hasSuperAdminRole = false;
+
+        if (auth.getPrincipal() instanceof Jwt jwt) {
+            username = jwt.getClaimAsString("preferred_username");
+            if (username == null || username.isBlank()) {
+                username = jwt.getSubject();
+            }
+
+            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+            if (realmAccess != null && realmAccess.get("roles") instanceof Collection<?> roles) {
+                for (Object role : roles) {
+                    if (SUPER_ADMIN_ROLE.equals(String.valueOf(role))) {
+                        hasSuperAdminRole = true;
+                        break;
+                    }
+                }
+            }
+        } else {
+            username = auth.getName();
+        }
+
+        if (!hasSuperAdminRole && auth.getAuthorities() != null) {
+            for (GrantedAuthority authority : auth.getAuthorities()) {
+                if (SUPER_ADMIN_ROLE.equals(authority.getAuthority())) {
+                    hasSuperAdminRole = true;
+                    break;
+                }
+            }
+        }
+
+        return ADMIN_USERNAME.equalsIgnoreCase(username) && hasSuperAdminRole;
+    }
+
+    private OidConfig insertOidConfigDirectly(
+            Device device,
+            OidConfigRequest request) {
+
+        OffsetDateTime now = OffsetDateTime.now();
+
+        OidConfig config = OidConfig.builder()
+                .device(device)
+                .metricScope(request.getMetricScope())
+                .metricType(request.getMetricType())
+                .oidKind(request.getOidKind())
+                .oidPattern(request.getOidPattern())
+                .dataType(request.getDataType())
+                .multiplier(request.getMultiplier())
+                .interfaceIndex(request.getInterfaceIndex())
+                .isActive(request.getIsActive())
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+
+        return oidConfigRepository.saveAndFlush(config);
+    }
 
     @Override
     public ApiResponse<OidConfigResponse> getOidConfigById(Long id) {
@@ -389,10 +530,6 @@ public class OidConfigServiceImpl implements OidConfigService {
                 .orElseGet(() ->
                         ApiResponse.error("Không tìm thấy OID config"));
     }
-
-    // =========================================================
-    // GET BY DEVICE ID WITH SEARCH AND PAGINATION
-    // =========================================================
 
     @Override
     public Page<OidConfigResponse> getOidConfigsByDeviceId(
@@ -444,57 +581,52 @@ public class OidConfigServiceImpl implements OidConfigService {
         return new PageImpl<>(responses, pageable, total);
     }
 
-    // =========================================================
-    // EXPORT EXCEL
-    // =========================================================
-
-        @Override
-        public byte[] exportOidConfigs(Long deviceId) throws IOException {
+    @Override
+    public byte[] exportOidConfigs(Long deviceId) throws IOException {
 
         if (deviceId == null || !deviceRepository.existsById(deviceId)) {
-                throw new IllegalArgumentException("Không tìm thấy thiết bị");
+            throw new IllegalArgumentException("Không tìm thấy thiết bị");
         }
 
-        // Chỉ lấy OID Config thuộc thiết bị được chỉ định.
         List<OidConfig> configs =
                 oidConfigRepository.findByDevice_Id(deviceId);
 
         try (Workbook workbook = new XSSFWorkbook();
-                ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
 
-                Sheet sheet = workbook.createSheet("OID Configs");
+            Sheet sheet = workbook.createSheet("OID Configs");
 
-                String[] headers = {
-                        "ID",
-                        "Device ID",
-                        "Metric Scope",
-                        "Metric Type",
-                        "OID Kind",
-                        "OID Pattern",
-                        "Data Type",
-                        "Multiplier",
-                        "Interface Index",
-                        "Is Active",
-                        "Created At",
-                        "Updated At"
-                };
+            String[] headers = {
+                    "ID",
+                    "Device ID",
+                    "Metric Scope",
+                    "Metric Type",
+                    "OID Kind",
+                    "OID Pattern",
+                    "Data Type",
+                    "Multiplier",
+                    "Interface Index",
+                    "Is Active",
+                    "Created At",
+                    "Updated At"
+            };
 
-                CellStyle headerStyle = workbook.createCellStyle();
-                Font headerFont = workbook.createFont();
-                headerFont.setBold(true);
-                headerStyle.setFont(headerFont);
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
 
-                Row headerRow = sheet.createRow(0);
+            Row headerRow = sheet.createRow(0);
 
-                for (int i = 0; i < headers.length; i++) {
+            for (int i = 0; i < headers.length; i++) {
                 Cell cell = headerRow.createCell(i);
                 cell.setCellValue(headers[i]);
                 cell.setCellStyle(headerStyle);
-                }
+            }
 
-                int rowIndex = 1;
+            int rowIndex = 1;
 
-                for (OidConfig config : configs) {
+            for (OidConfig config : configs) {
                 Row row = sheet.createRow(rowIndex++);
 
                 row.createCell(0).setCellValue(
@@ -537,11 +669,11 @@ public class OidConfigServiceImpl implements OidConfigService {
                 );
 
                 if (config.getInterfaceIndex() != null) {
-                        row.createCell(8).setCellValue(
-                                config.getInterfaceIndex()
-                        );
+                    row.createCell(8).setCellValue(
+                            config.getInterfaceIndex()
+                    );
                 } else {
-                        row.createCell(8).setCellValue("");
+                    row.createCell(8).setCellValue("");
                 }
 
                 row.createCell(9).setCellValue(
@@ -561,19 +693,19 @@ public class OidConfigServiceImpl implements OidConfigService {
                                 ? config.getUpdatedAt().toString()
                                 : ""
                 );
-                }
+            }
 
-                for (int i = 0; i < headers.length; i++) {
+            for (int i = 0; i < headers.length; i++) {
                 sheet.autoSizeColumn(i);
 
                 if (sheet.getColumnWidth(i) > 50 * 256) {
-                        sheet.setColumnWidth(i, 50 * 256);
+                    sheet.setColumnWidth(i, 50 * 256);
                 }
-                }
+            }
 
-                sheet.createFreezePane(0, 1);
+            sheet.createFreezePane(0, 1);
 
-                if (!configs.isEmpty()) {
+            if (!configs.isEmpty()) {
                 sheet.setAutoFilter(
                         new CellRangeAddress(
                                 0,
@@ -582,243 +714,174 @@ public class OidConfigServiceImpl implements OidConfigService {
                                 headers.length - 1
                         )
                 );
-                }
+            }
 
-                workbook.write(output);
-                return output.toByteArray();
+            workbook.write(output);
+            return output.toByteArray();
         }
-        }
+    }
 
-    // =========================================================
-    // DOWNLOAD EXCEL IMPORT TEMPLATE
-    // =========================================================
-
-        @Override
-        public byte[] downloadOidConfigImportTemplate() throws IOException {
+    @Override
+    public byte[] downloadOidConfigImportTemplate() throws IOException {
 
         try (Workbook workbook = new XSSFWorkbook();
-                ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
 
-                Sheet dataSheet = workbook.createSheet("OID Configs");
+            Sheet dataSheet = workbook.createSheet("OID Configs");
 
-                // Device ID được lấy từ URL nên không cần cột này.
-                String[] headers = {
-                        "Metric Scope",
-                        "Metric Type",
-                        "OID Kind",
-                        "OID Pattern",
-                        "Data Type",
-                        "Multiplier",
-                        "Interface Index",
-                        "Is Active"
-                };
+            String[] headers = {
+                    "Metric Scope",
+                    "Metric Type",
+                    "OID Kind",
+                    "OID Pattern",
+                    "Data Type",
+                    "Multiplier",
+                    "Interface Index",
+                    "Is Active"
+            };
 
-                CellStyle headerStyle = workbook.createCellStyle();
-                Font headerFont = workbook.createFont();
-                headerFont.setBold(true);
-                headerStyle.setFont(headerFont);
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
 
-                Row headerRow = dataSheet.createRow(0);
+            Row headerRow = dataSheet.createRow(0);
 
-                for (int i = 0; i < headers.length; i++) {
+            for (int i = 0; i < headers.length; i++) {
                 Cell cell = headerRow.createCell(i);
                 cell.setCellValue(headers[i]);
                 cell.setCellStyle(headerStyle);
-                }
+            }
 
-                for (int i = 0; i < headers.length; i++) {
+            for (int i = 0; i < headers.length; i++) {
                 dataSheet.autoSizeColumn(i);
-                }
+            }
 
-                Sheet instructionsSheet =
-                        workbook.createSheet("Instructions");
+            Sheet instructionsSheet =
+                    workbook.createSheet("Instructions");
 
-                String[][] instructions = {
-                        {"Column", "Description"},
-                        {
-                                "Metric Scope",
-                                "Phạm vi metric, ví dụ DEVICE hoặc INTERFACE"
-                        },
-                        {
-                                "Metric Type",
-                                "Loại metric cần giám sát"
-                        },
-                        {
-                                "OID Kind",
-                                "SINGLE: lấy một OID bằng SNMP GET; "
-                                        + "TABLE_COLUMN: lấy cột OID bằng SNMP WALK"
-                        },
-                        {
-                                "OID Pattern",
-                                "OID cần thu thập. Với TABLE_COLUMN, "
-                                        + "nhập OID gốc của cột, không thêm interface index"
-                        },
-                        {
-                                "Data Type",
-                                "Kiểu dữ liệu theo cấu hình hệ thống"
-                        },
-                        {
-                                "Multiplier",
-                                "Hệ số nhân dạng số; để trống sẽ dùng 1.0"
-                        },
-                        {
-                                "Interface Index",
-                                "Index interface đã tồn tại của thiết bị; "
-                                        + "có thể để trống nếu không áp dụng "
-                                        + "hoặc muốn lấy toàn bộ interface"
-                        },
-                        {
-                                "Is Active",
-                                "Yes/No hoặc 1/0; để trống sẽ mặc định Yes"
-                        },
-                        {
-                                "OID Kind values",
-                                "Chỉ chấp nhận SINGLE hoặc TABLE_COLUMN"
-                        },
-                        {
-                                "Note",
-                                "Dòng đầu tiên của sheet OID Configs là tiêu đề; "
-                                        + "không sửa thứ tự cột. Device ID được "
-                                        + "xác định từ URL import."
-                        }
-                };
+            String[][] instructions = {
+                    {"Column", "Description"},
+                    {
+                            "Metric Scope",
+                            "Phạm vi metric: DEVICE, INTERFACE, METRIC hoặc ARP"
+                    },
+                    {
+                            "Metric Type",
+                            "Loại metric cần giám sát"
+                    },
+                    {
+                            "OID Kind",
+                            "SINGLE: lấy một OID bằng SNMP GET; "
+                                    + "TABLE_COLUMN: lấy cột OID bằng SNMP WALK"
+                    },
+                    {
+                            "OID Pattern",
+                            "OID cần thu thập. Với TABLE_COLUMN, "
+                                    + "nhập OID gốc của cột, không thêm interface index"
+                    },
+                    {
+                            "Data Type",
+                            "Kiểu dữ liệu theo cấu hình hệ thống"
+                    },
+                    {
+                            "Multiplier",
+                            "Hệ số nhân dạng số (> 0); để trống sẽ dùng 1.0"
+                    },
+                    {
+                            "Interface Index",
+                            "Index interface (> 0) đã tồn tại của thiết bị; "
+                                    + "chỉ dùng khi Metric Scope là INTERFACE hoặc METRIC"
+                    },
+                    {
+                            "Is Active",
+                            "Yes/No hoặc 1/0; để trống sẽ mặc định Yes"
+                    },
+                    {
+                            "Quy trình phê duyệt",
+                            "Dữ liệu hợp lệ sẽ tạo Ticket chờ Checker phê duyệt trước khi lưu vào hệ thống."
+                    },
+                    {
+                            "Note",
+                            "Dòng đầu tiên của sheet OID Configs là tiêu đề; "
+                                    + "không sửa thứ tự cột. Device ID được "
+                                    + "xác định từ URL import."
+                    }
+            };
 
-                for (int i = 0; i < instructions.length; i++) {
+            for (int i = 0; i < instructions.length; i++) {
                 Row row = instructionsSheet.createRow(i);
 
                 for (int j = 0; j < instructions[i].length; j++) {
-                        Cell cell = row.createCell(j);
-                        cell.setCellValue(instructions[i][j]);
+                    Cell cell = row.createCell(j);
+                    cell.setCellValue(instructions[i][j]);
 
-                        if (i == 0) {
+                    if (i == 0) {
                         cell.setCellStyle(headerStyle);
-                        }
+                    }
                 }
-                }
+            }
 
-                instructionsSheet.setColumnWidth(0, 24 * 256);
-                instructionsSheet.setColumnWidth(1, 100 * 256);
+            instructionsSheet.setColumnWidth(0, 24 * 256);
+            instructionsSheet.setColumnWidth(1, 100 * 256);
 
-                workbook.write(output);
-                return output.toByteArray();
+            workbook.write(output);
+            return output.toByteArray();
         }
-        }
+    }
 
-    // =========================================================
-    // EXCEL ROW -> REQUEST
-    // =========================================================
-
-        private OidConfigRequest readRequestFromExcel(
-                Row row,
-                DataFormatter formatter) {
-
-        String metricScope = getCell(row, 0, formatter);
-        String metricType = getCell(row, 1, formatter);
-        String oidKind = getCell(row, 2, formatter);
-        String oidPattern = getCell(row, 3, formatter);
-        String dataType = getCell(row, 4, formatter);
-        String multiplierValue = getCell(row, 5, formatter);
-        String interfaceIndexValue = getCell(row, 6, formatter);
-        String activeValue = getCell(row, 7, formatter);
-
-        if (metricScope.isBlank()) {
-                throw new IllegalArgumentException(
-                        "Metric Scope không được để trống"
-                );
+    private void validateCreateRequest(OidConfigRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException(
+                    "OID config request không được để trống"
+            );
         }
 
-        if (metricType.isBlank()) {
-                throw new IllegalArgumentException(
-                        "Metric Type không được để trống"
-                );
+        if (request.getDeviceId() == null) {
+            throw new IllegalArgumentException(
+                    "Device ID không được để trống"
+            );
         }
 
-        oidKind = normalizeOidKind(oidKind);
+        String scope = normalizeMetricScope(request.getMetricScope());
+        normalizeOidKind(request.getOidKind());
 
-        if (oidPattern.isBlank()) {
-                throw new IllegalArgumentException(
-                        "OID Pattern không được để trống"
-                );
+        if (request.getMetricType() == null || request.getMetricType().isBlank()) {
+            throw new IllegalArgumentException("Metric Type không được để trống");
         }
 
-        if (dataType.isBlank()) {
-                throw new IllegalArgumentException(
-                        "Data Type không được để trống"
-                );
+        if (request.getOidPattern() == null || request.getOidPattern().isBlank()) {
+            throw new IllegalArgumentException("OID Pattern không được để trống");
         }
 
-        double multiplier = 1.0;
-
-        if (!multiplierValue.isBlank()) {
-                try {
-                multiplier = Double.parseDouble(multiplierValue);
-
-                if (!Double.isFinite(multiplier)) {
-                        throw new NumberFormatException();
-                }
-                } catch (NumberFormatException e) {
-                throw new IllegalArgumentException(
-                        "Multiplier phải là số hợp lệ"
-                );
-                }
+        if (request.getDataType() == null || request.getDataType().isBlank()) {
+            throw new IllegalArgumentException("Data Type không được để trống");
         }
 
-        Integer interfaceIndex = null;
-
-        if (!interfaceIndexValue.isBlank()) {
-                try {
-                interfaceIndex = Integer.parseInt(interfaceIndexValue);
-
-                if (interfaceIndex <= 0) {
-                        throw new NumberFormatException();
-                }
-                } catch (NumberFormatException e) {
-                throw new IllegalArgumentException(
-                        "Interface Index phải là số nguyên dương"
-                );
-                }
+        if (request.getMultiplier() != null
+                && (!Double.isFinite(request.getMultiplier()) || request.getMultiplier() <= 0)) {
+            throw new IllegalArgumentException("Multiplier phải lớn hơn 0");
         }
 
-        Boolean isActive;
+        validateScopeAndInterface(scope, request.getInterfaceIndex());
+    }
 
-        if (activeValue.isBlank()
-                || activeValue.equalsIgnoreCase("Yes")
-                || activeValue.equals("1")) {
-                isActive = Boolean.TRUE;
-        } else if (activeValue.equalsIgnoreCase("No")
-                || activeValue.equals("0")) {
-                isActive = Boolean.FALSE;
-        } else {
-                throw new IllegalArgumentException(
-                        "Cột Is Active chỉ chấp nhận Yes/No hoặc 1/0"
-                );
+    private void normalizeCreateDefaults(OidConfigRequest request) {
+        request.setMetricScope(normalizeMetricScope(request.getMetricScope()));
+        request.setMetricType(request.getMetricType().trim());
+        request.setOidKind(normalizeOidKind(request.getOidKind()));
+        request.setOidPattern(request.getOidPattern().trim());
+        request.setDataType(request.getDataType().trim());
+        if (request.getMultiplier() == null) {
+            request.setMultiplier(1.0);
         }
-
-        return OidConfigRequest.builder()
-                .metricScope(metricScope)
-                .metricType(metricType)
-                .oidKind(oidKind)
-                .oidPattern(oidPattern)
-                .dataType(dataType)
-                .multiplier(multiplier)
-                .interfaceIndex(interfaceIndex)
-                .isActive(isActive)
-                .build();
+        if (request.getIsActive() == null) {
+            request.setIsActive(Boolean.TRUE);
         }
+    }
 
-    // =========================================================
-    // SET DEVICE INTERFACE
-    // =========================================================
-
-    private void setInterface(
-            OidConfig config,
-            Device device,
-            Integer interfaceIndex) {
-
-        config.setInterfaceIndex(interfaceIndex);
-
+    private void validateScopeAndInterface(String metricScope, Integer interfaceIndex) {
         if (interfaceIndex == null) {
-            config.setDeviceInterface(null);
             return;
         }
 
@@ -828,53 +891,46 @@ public class OidConfigServiceImpl implements OidConfigService {
             );
         }
 
+        if (!"INTERFACE".equals(metricScope) && !"METRIC".equals(metricScope)) {
+            throw new IllegalArgumentException(
+                    "Interface Index chỉ được khai báo khi Metric Scope là INTERFACE hoặc METRIC"
+            );
+        }
+    }
+
+    private void validateInterfaceExists(Long deviceId, Integer interfaceIndex) {
+        if (interfaceIndex == null) {
+            return;
+        }
+
         DeviceInterface.DeviceInterfaceId id =
-                new DeviceInterface.DeviceInterfaceId(
-                        device.getId(),
-                        interfaceIndex
-                );
+                new DeviceInterface.DeviceInterfaceId(deviceId, interfaceIndex);
 
-        DeviceInterface deviceInterface =
-                deviceInterfaceRepository.findById(id)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Không tìm thấy interface "
-                                                + interfaceIndex
-                                                + " của thiết bị "
-                                                + device.getId()
-                                ));
-
-        config.setDeviceInterface(deviceInterface);
+        if (!deviceInterfaceRepository.existsById(id)) {
+            throw new IllegalArgumentException(
+                    "Không tìm thấy interface " + interfaceIndex
+                            + " của thiết bị " + deviceId
+            );
+        }
     }
 
-    // =========================================================
-    // ENTITY -> RESPONSE
-    // =========================================================
+    private String normalizeMetricScope(String metricScope) {
+        if (metricScope == null || metricScope.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Metric Scope không được để trống. Chỉ chấp nhận DEVICE, INTERFACE, METRIC hoặc ARP"
+            );
+        }
 
-    private OidConfigResponse toResponse(OidConfig config) {
-        return OidConfigResponse.builder()
-                .id(config.getId())
-                .metricScope(config.getMetricScope())
-                .metricType(config.getMetricType())
-                .oidKind(config.getOidKind())
-                .oidPattern(config.getOidPattern())
-                .dataType(config.getDataType())
-                .multiplier(config.getMultiplier())
-                .deviceId(
-                        config.getDevice() == null
-                                ? null
-                                : config.getDevice().getId()
-                )
-                .interfaceIndex(config.getInterfaceIndex())
-                .isActive(config.getIsActive())
-                .createdAt(config.getCreatedAt())
-                .updatedAt(config.getUpdatedAt())
-                .build();
+        String normalized = metricScope.trim().toUpperCase();
+        if (!VALID_SCOPES.contains(normalized)) {
+            throw new IllegalArgumentException(
+                    "Metric Scope không hợp lệ: " + metricScope
+                            + ". Chỉ chấp nhận DEVICE, INTERFACE, METRIC hoặc ARP"
+            );
+        }
+
+        return normalized;
     }
-
-    // =========================================================
-    // OID KIND VALIDATION
-    // =========================================================
 
     private String normalizeOidKind(String oidKind) {
         if (oidKind == null || oidKind.isBlank()) {
@@ -897,9 +953,98 @@ public class OidConfigServiceImpl implements OidConfigService {
         return normalized;
     }
 
-    // =========================================================
-    // EXCEL HELPERS
-    // =========================================================
+    private OidConfigRequest readRequestFromExcel(
+            Row row,
+            DataFormatter formatter) {
+
+        String metricScope = getCell(row, 0, formatter);
+        String metricType = getCell(row, 1, formatter);
+        String oidKind = getCell(row, 2, formatter);
+        String oidPattern = getCell(row, 3, formatter);
+        String dataType = getCell(row, 4, formatter);
+        String multiplierValue = getCell(row, 5, formatter);
+        String interfaceIndexValue = getCell(row, 6, formatter);
+        String activeValue = getCell(row, 7, formatter);
+
+        double multiplier = 1.0;
+
+        if (!multiplierValue.isBlank()) {
+            try {
+                multiplier = Double.parseDouble(multiplierValue);
+
+                if (!Double.isFinite(multiplier) || multiplier <= 0) {
+                    throw new NumberFormatException();
+                }
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                        "Multiplier phải là số lớn hơn 0"
+                );
+            }
+        }
+
+        Integer interfaceIndex = null;
+
+        if (!interfaceIndexValue.isBlank()) {
+            try {
+                interfaceIndex = Integer.parseInt(interfaceIndexValue);
+
+                if (interfaceIndex <= 0) {
+                    throw new NumberFormatException();
+                }
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                        "Interface Index phải là số nguyên dương"
+                );
+            }
+        }
+
+        Boolean isActive;
+
+        if (activeValue.isBlank()
+                || activeValue.equalsIgnoreCase("Yes")
+                || activeValue.equals("1")) {
+            isActive = Boolean.TRUE;
+        } else if (activeValue.equalsIgnoreCase("No")
+                || activeValue.equals("0")) {
+            isActive = Boolean.FALSE;
+        } else {
+            throw new IllegalArgumentException(
+                    "Cột Is Active chỉ chấp nhận Yes/No hoặc 1/0"
+            );
+        }
+
+        return OidConfigRequest.builder()
+                .metricScope(metricScope)
+                .metricType(metricType)
+                .oidKind(oidKind)
+                .oidPattern(oidPattern)
+                .dataType(dataType)
+                .multiplier(multiplier)
+                .interfaceIndex(interfaceIndex)
+                .isActive(isActive)
+                .build();
+    }
+
+    private OidConfigResponse toResponse(OidConfig config) {
+        return OidConfigResponse.builder()
+                .id(config.getId())
+                .metricScope(config.getMetricScope())
+                .metricType(config.getMetricType())
+                .oidKind(config.getOidKind())
+                .oidPattern(config.getOidPattern())
+                .dataType(config.getDataType())
+                .multiplier(config.getMultiplier())
+                .deviceId(
+                        config.getDevice() == null
+                                ? null
+                                : config.getDevice().getId()
+                )
+                .interfaceIndex(config.getInterfaceIndex())
+                .isActive(config.getIsActive())
+                .createdAt(config.getCreatedAt())
+                .updatedAt(config.getUpdatedAt())
+                .build();
+    }
 
     private String getCell(
             Row row,

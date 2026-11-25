@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_MakerChecker"
+                  targetNamespace="http://network-monitor.com/bpmn">
+
+  <bpmn:process id="maker-checker-approval" name="Generic Maker-Checker Approval" isExecutable="true" camunda:historyTimeToLive="180">
+    <bpmn:startEvent id="StartEvent_TicketCreated" name="Ticket Created">
+      <bpmn:outgoing>Flow_ToChecker</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:sequenceFlow id="Flow_ToChecker" sourceRef="StartEvent_TicketCreated" targetRef="Task_CheckerReview" />
+
+    <bpmn:userTask id="Task_CheckerReview" name="Checker Review" camunda:candidateGroups="CHECKER">
+      <bpmn:incoming>Flow_ToChecker</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToDecision</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:sequenceFlow id="Flow_ToDecision" sourceRef="Task_CheckerReview" targetRef="Gateway_Decision" />
+
+    <bpmn:exclusiveGateway id="Gateway_Decision" name="Approved?">
+      <bpmn:incoming>Flow_ToDecision</bpmn:incoming>
+      <bpmn:outgoing>Flow_Approved</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Rejected</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:sequenceFlow id="Flow_Approved" sourceRef="Gateway_Decision" targetRef="Task_ExecuteChange">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${approved == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:sequenceFlow id="Flow_Rejected" sourceRef="Gateway_Decision" targetRef="Task_SendMail">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${approved == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+
+    <bpmn:serviceTask id="Task_ExecuteChange" name="Execute Business Change" camunda:delegateExpression="${ticketExecutionDelegate}">
+      <bpmn:incoming>Flow_Approved</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToMail</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="Flow_ToMail" sourceRef="Task_ExecuteChange" targetRef="Task_SendMail" />
+
+    <bpmn:serviceTask id="Task_SendMail" name="Send Result Email" camunda:delegateExpression="${ticketMailDelegate}">
+      <bpmn:incoming>Flow_ToMail</bpmn:incoming>
+      <bpmn:incoming>Flow_Rejected</bpmn:incoming>
+      <bpmn:outgoing>Flow_End</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_Completed" name="Completed">
+      <bpmn:incoming>Flow_End</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_End" sourceRef="Task_SendMail" targetRef="EndEvent_Completed" />
+  </bpmn:process>
+</bpmn:definitions>

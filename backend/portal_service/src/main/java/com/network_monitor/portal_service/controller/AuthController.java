@@ -69,7 +69,7 @@ public class AuthController {
     }
 
     @GetMapping("/export")
-    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR', 'ROLE_REPORT_MANAGER')")
     public ResponseEntity<byte[]> exportUsers() throws IOException {
         byte[] file = authService.exportUsers();
 

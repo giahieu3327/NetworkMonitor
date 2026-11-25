@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { axiosClient } from '../../api/axiosClient';
@@ -28,6 +28,30 @@ const TABS = [
   { id: 'ram', label: 'RAM', icon: '🧠' }
 ];
 
+const DEVICE_MANAGE_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+]);
+
+const INCIDENT_MANAGE_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+]);
+
+const REPORT_EXPORT_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
 const formatDateInput = (dateObj) => {
   const year = dateObj.getFullYear();
   const month = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -40,6 +64,7 @@ const DevicePage = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const [me, setMe] = useState(null);
   const [device, setDevice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(
@@ -63,6 +88,45 @@ const DevicePage = () => {
   const [reportFormat, setReportFormat] = useState('pdf');
   const [isExporting, setIsExporting] = useState(false);
 
+  const userRoles = useMemo(() => {
+    const roles = new Set();
+
+    if (me?.roleName) {
+      roles.add(normalizeRole(me.roleName));
+    }
+
+    if (Array.isArray(me?.roles)) {
+      me.roles.forEach((role) => {
+        const normalized = normalizeRole(role);
+        if (normalized) roles.add(normalized);
+      });
+    }
+
+    return roles;
+  }, [me]);
+
+  const canManageDevices = useMemo(
+    () => Array.from(userRoles).some((role) => DEVICE_MANAGE_ROLES.has(role)),
+    [userRoles]
+  );
+
+  const canManageIncidents = useMemo(
+    () => Array.from(userRoles).some((role) => INCIDENT_MANAGE_ROLES.has(role)),
+    [userRoles]
+  );
+
+  const canExportReports = useMemo(
+    () => Array.from(userRoles).some((role) => REPORT_EXPORT_ROLES.has(role)),
+    [userRoles]
+  );
+
+  const isGuestViewer = useMemo(
+    () =>
+      userRoles.size === 0 ||
+      (userRoles.size === 1 && userRoles.has('ROLE_GUEST_VIEWER')),
+    [userRoles]
+  );
+
   useEffect(() => {
     if (location.state?.activeTab) {
       setActiveTab(location.state.activeTab);
@@ -84,6 +148,20 @@ const DevicePage = () => {
       mediaQuery.removeEventListener('change', handleThemeChange);
     };
   }, []);
+
+  useEffect(() => {
+    const fetchMe = async () => {
+      try {
+        const res = await axiosClient.get('/profile/me');
+        const data = res.data?.data ?? res.data;
+        setMe(data);
+      } catch (err) {
+        navigate('/login');
+      }
+    };
+
+    fetchMe();
+  }, [navigate]);
 
   useEffect(() => {
     const fetchDevice = async () => {
@@ -123,6 +201,7 @@ const DevicePage = () => {
   };
 
   const handleOpenExportModal = () => {
+    if (!canExportReports) return;
     setReportDate(maxDateStr);
     setIsExportModalOpen(true);
   };
@@ -135,6 +214,8 @@ const DevicePage = () => {
 
   const handleExportReport = async (e) => {
     e.preventDefault();
+
+    if (!canExportReports) return;
 
     if (reportDate < minDateStr || reportDate > maxDateStr) {
       alert(`Vui lòng chọn ngày trong khoảng từ ${minDateStr} đến ${maxDateStr}.`);
@@ -200,6 +281,11 @@ const DevicePage = () => {
     const commonProps = {
       deviceId,
       device,
+      currentUser: me,
+      canManageDevices,
+      canManageIncidents,
+      canExportReports,
+      isGuestViewer,
     };
 
     switch (activeTab) {
@@ -315,15 +401,17 @@ const DevicePage = () => {
           </div>
         </div>
 
-        <div className="device-summary-actions">
-          <button
-            type="button"
-            className="device-export-button"
-            onClick={handleOpenExportModal}
-          >
-            📄 Xuất báo cáo
-          </button>
-        </div>
+        {canExportReports && (
+          <div className="device-summary-actions">
+            <button
+              type="button"
+              className="device-export-button"
+              onClick={handleOpenExportModal}
+            >
+              📄 Xuất báo cáo
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="device-tab-container">
@@ -347,7 +435,7 @@ const DevicePage = () => {
         {renderTabContent()}
       </main>
 
-      {isExportModalOpen && (
+      {canExportReports && isExportModalOpen && (
         <div
           className="export-modal-overlay"
           onClick={handleCloseExportModal}

@@ -5,8 +5,80 @@ import './TabDeviceCredentials.css';
 
 const PAGE_SIZE = 10;
 
-const TabDeviceCredentials = ({ deviceId, device }) => {
+const ALLOWED_VIEW_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+  'ROLE_GUEST_VIEWER',
+]);
+
+const CREDENTIAL_MANAGE_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+]);
+
+const CREDENTIAL_EXPORT_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
+const TabDeviceCredentials = ({
+  deviceId,
+  device,
+  currentUser,
+  canManageDevices: canManageDevicesProp,
+  canExportReports: canExportReportsProp,
+}) => {
   const navigate = useNavigate();
+
+  const userRoles = useMemo(() => {
+    const roles = new Set();
+
+    if (currentUser?.roleName) {
+      roles.add(normalizeRole(currentUser.roleName));
+    }
+
+    if (Array.isArray(currentUser?.roles)) {
+      currentUser.roles.forEach((role) => {
+        const normalized = normalizeRole(role);
+        if (normalized) roles.add(normalized);
+      });
+    }
+
+    return roles;
+  }, [currentUser]);
+
+  const canViewCredentials = useMemo(() => {
+    if (!currentUser) return true;
+    return Array.from(userRoles).some((role) => ALLOWED_VIEW_ROLES.has(role));
+  }, [currentUser, userRoles]);
+
+  const canManageCredentials = useMemo(() => {
+    if (typeof canManageDevicesProp === 'boolean') {
+      return canManageDevicesProp;
+    }
+    return Array.from(userRoles).some((role) =>
+      CREDENTIAL_MANAGE_ROLES.has(role)
+    );
+  }, [canManageDevicesProp, userRoles]);
+
+  const canExportCredentials = useMemo(() => {
+    if (typeof canExportReportsProp === 'boolean') {
+      return canExportReportsProp;
+    }
+    return Array.from(userRoles).some((role) =>
+      CREDENTIAL_EXPORT_ROLES.has(role)
+    );
+  }, [canExportReportsProp, userRoles]);
 
   const [credentials, setCredentials] = useState([]);
   const [totalElements, setTotalElements] = useState(0);
@@ -30,7 +102,7 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
   const [importing, setImporting] = useState(false);
 
   const fetchCredentials = useCallback(async () => {
-    if (!deviceId) return;
+    if (!deviceId || !canViewCredentials) return;
 
     try {
       const res = await axiosClient.get(
@@ -70,13 +142,15 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
           'Không thể tải danh sách thông tin xác thực!'
       );
     }
-  }, [deviceId, searchParams]);
+  }, [deviceId, canViewCredentials, searchParams]);
 
   useEffect(() => {
     fetchCredentials();
   }, [fetchCredentials]);
 
   const handleNavigateCreate = () => {
+    if (!canManageCredentials) return;
+
     navigate(`/devices/${deviceId}/credentials/create`, {
       state: { device },
     });
@@ -185,6 +259,8 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
   };
 
   const handleSelectAll = (e) => {
+    if (!canManageCredentials) return;
+
     setSelectedIds(
       e.target.checked
         ? credentials.map((credential) => credential.id)
@@ -194,6 +270,7 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
 
   const handleSelectOne = (e, credential) => {
     e.stopPropagation();
+    if (!canManageCredentials) return;
 
     setSelectedIds((prev) =>
       prev.includes(credential.id)
@@ -210,6 +287,7 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
 
   const handleBulkDelete = async () => {
     setIsDropdownOpen(false);
+    if (!canManageCredentials) return;
 
     if (selectedIds.length === 0) {
       alert('Vui lòng chọn thông tin xác thực cần xóa!');
@@ -274,6 +352,7 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
 
   const handleExport = async () => {
     setIsDropdownOpen(false);
+    if (!canExportCredentials) return;
 
     try {
       const res = await axiosClient.get('/device-credentials/export', {
@@ -293,6 +372,8 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
   };
 
   const handleDownloadTemplate = async () => {
+    if (!canManageCredentials) return;
+
     try {
       const res = await axiosClient.get(
         '/device-credentials/import/template',
@@ -317,6 +398,7 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
 
   const handleImport = async (e) => {
     e.preventDefault();
+    if (!canManageCredentials) return;
 
     if (!importFile) {
       alert('Vui lòng chọn file Excel!');
@@ -407,6 +489,14 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
     return <span>UNKNOWN</span>;
   };
 
+  if (!canViewCredentials) {
+    return (
+      <div className="permission-message">
+        Bạn không có quyền xem thông tin xác thực của thiết bị này.
+      </div>
+    );
+  }
+
   const startItem = totalElements === 0 ? 0 : searchParams.page * PAGE_SIZE + 1;
   const endItem = Math.min((searchParams.page + 1) * PAGE_SIZE, totalElements);
 
@@ -443,78 +533,94 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
           </button>
         </div>
 
-        <div className="device-actions">
-          <button
-            type="button"
-            className="add-device-button"
-            onClick={handleNavigateCreate}
-          >
-            + Thêm Credential
-          </button>
+        {canManageCredentials ? (
+          <div className="device-actions">
+            <button
+              type="button"
+              className="add-device-button"
+              onClick={handleNavigateCreate}
+            >
+              + Thêm Credential
+            </button>
 
-          <button
-            type="button"
-            className="device-action-dropdown-button"
-            onClick={() =>
-              setIsDropdownOpen((prev) => !prev)
-            }
-            title="Thao tác thông tin xác thực"
-          >
-            ▾
-          </button>
+            <button
+              type="button"
+              className="device-action-dropdown-button"
+              onClick={() =>
+                setIsDropdownOpen((prev) => !prev)
+              }
+              title="Thao tác thông tin xác thực"
+            >
+              ▾
+            </button>
 
-          {isDropdownOpen && (
-            <div className="device-dropdown">
-              <button
-                type="button"
-                className="device-dropdown-item delete-item"
-                onClick={handleBulkDelete}
-              >
-                🗑️ Xóa credential
-                {selectedIds.length > 0 &&
-                  ` (${selectedIds.length})`}
-              </button>
+            {isDropdownOpen && (
+              <div className="device-dropdown">
+                <button
+                  type="button"
+                  className="device-dropdown-item delete-item"
+                  onClick={handleBulkDelete}
+                >
+                  🗑️ Xóa credential
+                  {selectedIds.length > 0 &&
+                    ` (${selectedIds.length})`}
+                </button>
 
-              <button
-                type="button"
-                className="device-dropdown-item"
-                onClick={() => {
-                  setIsDropdownOpen(false);
-                  setImportFile(null);
-                  setShowImport(true);
-                }}
-              >
-                📥 Thêm credential từ file
-              </button>
+                <button
+                  type="button"
+                  className="device-dropdown-item"
+                  onClick={() => {
+                    setIsDropdownOpen(false);
+                    setImportFile(null);
+                    setShowImport(true);
+                  }}
+                >
+                  📥 Thêm credential từ file
+                </button>
 
-              <button
-                type="button"
-                className="device-dropdown-item"
-                onClick={handleExport}
-              >
-                📤 Xuất file credential
-              </button>
-            </div>
-          )}
-        </div>
+                {canExportCredentials && (
+                  <button
+                    type="button"
+                    className="device-dropdown-item"
+                    onClick={handleExport}
+                  >
+                    📤 Xuất file credential
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          canExportCredentials && (
+            <button
+              type="button"
+              className="search-button"
+              onClick={handleExport}
+            >
+              📤 Xuất file credential
+            </button>
+          )
+        )}
       </div>
 
       <div className="user-table-wrapper">
         <table className="user-table">
           <thead>
             <tr>
-              <th
-                style={{
-                  width: '40px',
-                  textAlign: 'center',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isAllSelected}
-                  onChange={handleSelectAll}
-                />
-              </th>
+              {canManageCredentials && (
+                <th
+                  style={{
+                    width: '40px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={handleSelectAll}
+                  />
+                </th>
+              )}
 
               <th
                 onClick={() => handleSort('credentialName')}
@@ -568,18 +674,20 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
                   className="clickable-row"
                   onClick={() => navigate(`/credentials/${credential.id}`)}
                 >
-                  <td
-                    style={{ textAlign: 'center' }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(credential.id)}
-                      onChange={(e) =>
-                        handleSelectOne(e, credential)
-                      }
-                    />
-                  </td>
+                  {canManageCredentials && (
+                    <td
+                      style={{ textAlign: 'center' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(credential.id)}
+                        onChange={(e) =>
+                          handleSelectOne(e, credential)
+                        }
+                      />
+                    </td>
+                  )}
 
                   <td>{credential.credentialName || '—'}</td>
 
@@ -605,7 +713,7 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
             ) : (
               <tr>
                 <td
-                  colSpan="7"
+                  colSpan={canManageCredentials ? 7 : 6}
                   className="empty-user-table"
                 >
                   {searchParams.keyword
@@ -666,7 +774,7 @@ const TabDeviceCredentials = ({ deviceId, device }) => {
         </div>
       )}
 
-      {showImport && (
+      {canManageCredentials && showImport && (
         <div className="import-modal-overlay">
           <div className="import-modal">
             <h3>Import danh sách thông tin xác thực</h3>

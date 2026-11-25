@@ -4,6 +4,9 @@ import { axiosClient } from '../../api/axiosClient';
 import '../../styles/common.css';
 import './HomePage.css';
 
+const PASSWORD_POLICY_REGEX =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
+
 const EyeIcon = ({ show }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     {show ? (
@@ -178,6 +181,9 @@ const HomePage = () => {
       newPassword: '',
       confirmPassword: ''
     });
+    setShowCurrentPwd(false);
+    setShowNewPwd(false);
+    setShowConfirmPwd(false);
     setIsPwdModalOpen(true);
   };
 
@@ -192,6 +198,12 @@ const HomePage = () => {
     }
     if (!pwdForm.newPassword) {
       setErrorMsg('Vui lòng nhập mật khẩu mới.');
+      return;
+    }
+    if (!PASSWORD_POLICY_REGEX.test(pwdForm.newPassword)) {
+      setErrorMsg(
+        'Mật khẩu mới phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, chữ số và ký tự đặc biệt.'
+      );
       return;
     }
     if (pwdForm.newPassword !== pwdForm.confirmPassword) {
@@ -281,7 +293,6 @@ const HomePage = () => {
             </div>
           </div>
 
-          {/* Alert Messages */}
           {errorMsg && !isEditModalOpen && !isPwdModalOpen && (
             <div className="home-alert error">
               <span>{errorMsg}</span>
@@ -378,7 +389,6 @@ const HomePage = () => {
         </div>
       </main>
 
-      {/* Modal Chỉnh sửa Profile (Chỉ hiển thị khi không phải admin) */}
       {isEditModalOpen && !isAdminAccount && (
         <div className="modal-overlay">
           <div className="modal-card">
@@ -446,7 +456,6 @@ const HomePage = () => {
         </div>
       )}
 
-      {/* Modal Đổi Mật Khẩu */}
       {isPwdModalOpen && (
         <div className="modal-overlay">
           <div className="modal-card">

@@ -6,6 +6,20 @@ import './IncidentPage.css';
 
 const PAGE_SIZE = 10;
 
+const ALLOWED_VIEW_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+  'ROLE_GUEST_VIEWER',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
 const formatMetricValue = (val) => {
   if (val === null || val === undefined || val === '') return '—';
   const num = Number(val);
@@ -40,13 +54,36 @@ const parseSamples = (samples) => {
   return [];
 };
 
-const IncidentPage = () => {
+const IncidentPage = ({ currentUser }) => {
   const { deviceId, metricType } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
 
   const device = location.state?.device || null;
   const metricSummary = location.state?.metricSummary || null;
+  const effectiveUser = currentUser || location.state?.currentUser || null;
+
+  const userRoles = useMemo(() => {
+    const roles = new Set();
+
+    if (effectiveUser?.roleName) {
+      roles.add(normalizeRole(effectiveUser.roleName));
+    }
+
+    if (Array.isArray(effectiveUser?.roles)) {
+      effectiveUser.roles.forEach((role) => {
+        const normalized = normalizeRole(role);
+        if (normalized) roles.add(normalized);
+      });
+    }
+
+    return roles;
+  }, [effectiveUser]);
+
+  const canViewIncidents = useMemo(() => {
+    if (!effectiveUser) return true;
+    return Array.from(userRoles).some((role) => ALLOWED_VIEW_ROLES.has(role));
+  }, [effectiveUser, userRoles]);
 
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,7 +121,10 @@ const IncidentPage = () => {
   }, [deviceId, metricType]);
 
   const fetchIncidents = useCallback(async () => {
-    if (!metricType) return;
+    if (!metricType || !canViewIncidents) {
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);
@@ -124,7 +164,7 @@ const IncidentPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [deviceId, metricType, page, appliedKeyword, sortBy, direction]);
+  }, [deviceId, metricType, canViewIncidents, page, appliedKeyword, sortBy, direction]);
 
   useEffect(() => {
     fetchIncidents();
@@ -253,6 +293,44 @@ const IncidentPage = () => {
     if (upper === 'RESOLVED') return 'inc-badge inc-status-resolved';
     return 'inc-badge inc-badge-default';
   };
+
+  if (!canViewIncidents) {
+    return (
+      <div className={`inc-page ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+        <header className="inc-header">
+          <div className="inc-header-left">
+            <button
+              type="button"
+              className="inc-back-button"
+              onClick={handleBack}
+              title="Quay lại"
+            >
+              ←
+            </button>
+            <div>
+              <h2>LỊCH SỬ SỰ CỐ: {metricType}</h2>
+            </div>
+          </div>
+        </header>
+        <main className="inc-main">
+          <div className="inc-card">
+            <div className="permission-message">
+              Bạn không có quyền xem lịch sử sự cố của thiết bị này.
+            </div>
+            <div className="inc-modal-footer">
+              <button
+                type="button"
+                className="inc-cancel-btn"
+                onClick={handleBack}
+              >
+                Quay lại
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   const startItem = totalElements === 0 ? 0 : page * PAGE_SIZE + 1;
   const endItem = Math.min((page + 1) * PAGE_SIZE, totalElements);

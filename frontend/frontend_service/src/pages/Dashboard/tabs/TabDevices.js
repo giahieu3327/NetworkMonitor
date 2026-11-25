@@ -1,18 +1,139 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { axiosClient } from '../../../api/axiosClient';
 
-// =================================
-// TAB DEVICES
-// =================================
+const DEVICE_MANAGE_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+]);
 
-const TabDevices = () => {
+const DEVICE_EXPORT_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  if (!trimmed) return '';
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
+const extractRoles = (source) => {
+  const rolesSet = new Set();
+  if (!source) return rolesSet;
+
+  const pushRole = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach((item) => pushRole(item));
+      return;
+    }
+    if (typeof val === 'string') {
+      val
+        .split(/[\s,]+/)
+        .map((r) => normalizeRole(r))
+        .filter(Boolean)
+        .forEach((r) => rolesSet.add(r));
+    } else if (typeof val === 'object') {
+      pushRole(val.roleName || val.role_name || val.name || val.authority || val.role);
+    }
+  };
+
+  pushRole(source.roleName);
+  pushRole(source.role_name);
+  pushRole(source.role);
+  pushRole(source.authority);
+  pushRole(source.roles);
+  pushRole(source.authorities);
+  pushRole(source.realmRoles);
+  pushRole(source.realm_roles);
+  pushRole(source.realm_access?.roles);
+  pushRole(source.scope);
+
+  return rolesSet;
+};
+
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const jsonStr = decodeURIComponent(
+      atob(padded)
+        .split('')
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join('')
+    );
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+};
+
+const readStoredUser = () => {
+  try {
+    const rawUser = localStorage.getItem('current_user');
+    if (rawUser) {
+      return JSON.parse(rawUser);
+    }
+  } catch {
+  }
+
+  const storedRole = localStorage.getItem('user_role');
+  let storedRoles = [];
+  try {
+    const rawRoles = localStorage.getItem('user_roles');
+    if (rawRoles) {
+      const parsed = JSON.parse(rawRoles);
+      if (Array.isArray(parsed)) storedRoles = parsed;
+    }
+  } catch {
+  }
+
+  if (storedRole || storedRoles.length > 0) {
+    return {
+      roleName: storedRole || '',
+      roles: storedRoles,
+    };
+  }
+
+  const accessToken = localStorage.getItem('access_token');
+  if (accessToken) {
+    const claims = decodeJwtPayload(accessToken);
+    if (claims) {
+      return claims;
+    }
+  }
+
+  return null;
+};
+
+const TabDevices = ({ currentUser }) => {
   const navigate = useNavigate();
 
-  // =================================
-  // DEVICE LIST STATES
-  // =================================
+  const resolvedUser = useMemo(
+    () => currentUser || readStoredUser(),
+    [currentUser]
+  );
+
+  const userRoles = useMemo(
+    () => extractRoles(resolvedUser),
+    [resolvedUser]
+  );
+
+  const canManageDevices = useMemo(
+    () => Array.from(userRoles).some((role) => DEVICE_MANAGE_ROLES.has(role)),
+    [userRoles]
+  );
+
+  const canExportDevices = useMemo(
+    () => Array.from(userRoles).some((role) => DEVICE_EXPORT_ROLES.has(role)),
+    [userRoles]
+  );
 
   const [devices, setDevices] = useState([]);
   const [totalElements, setTotalElements] = useState(0);
@@ -31,17 +152,9 @@ const TabDevices = () => {
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // =================================
-  // IMPORT DEVICE STATES
-  // =================================
-
   const [showImport, setShowImport] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
-
-  // =================================
-  // FETCH DEVICES
-  // =================================
 
   const fetchDevices = useCallback(async () => {
     try {
@@ -69,17 +182,10 @@ const TabDevices = () => {
     fetchDevices();
   }, [fetchDevices]);
 
-  // =================================
-  // NAVIGATE TO CREATE DEVICE PAGE
-  // =================================
-
   const handleNavigateCreate = () => {
+    if (!canManageDevices) return;
     navigate('/devices/create');
   };
-
-  // =================================
-  // SEARCH
-  // =================================
 
   const handleSearch = () => {
     setSearchParams((prev) => ({
@@ -94,10 +200,6 @@ const TabDevices = () => {
       handleSearch();
     }
   };
-
-  // =================================
-  // SORT
-  // =================================
 
   const handleSort = (field) => {
     setSearchParams((prev) => ({
@@ -125,11 +227,8 @@ const TabDevices = () => {
       : <span style={{ marginLeft: '4px' }}>↓</span>;
   };
 
-  // =================================
-  // SELECT DEVICES
-  // =================================
-
   const handleSelectAll = (e) => {
+    if (!canManageDevices) return;
     setSelectedIds(
       e.target.checked
         ? devices.map((device) => device.id)
@@ -139,6 +238,7 @@ const TabDevices = () => {
 
   const handleSelectOne = (e, device) => {
     e.stopPropagation();
+    if (!canManageDevices) return;
 
     setSelectedIds((prev) =>
       prev.includes(device.id)
@@ -153,12 +253,9 @@ const TabDevices = () => {
       selectedIds.includes(device.id)
     );
 
-  // =================================
-  // BULK DELETE
-  // =================================
-
   const handleBulkDelete = async () => {
     setIsDropdownOpen(false);
+    if (!canManageDevices) return;
 
     if (selectedIds.length === 0) {
       alert('Vui lòng chọn thiết bị cần xóa!');
@@ -195,10 +292,6 @@ const TabDevices = () => {
     }
   };
 
-  // =================================
-  // DOWNLOAD EXCEL
-  // =================================
-
   const downloadExcel = (data, fileName) => {
     const url = window.URL.createObjectURL(
       new Blob([data], {
@@ -218,12 +311,9 @@ const TabDevices = () => {
     window.URL.revokeObjectURL(url);
   };
 
-  // =================================
-  // EXPORT DEVICES
-  // =================================
-
   const handleExport = async () => {
     setIsDropdownOpen(false);
+    if (!canExportDevices) return;
 
     try {
       const res = await axiosClient.get('/devices/export', {
@@ -241,11 +331,9 @@ const TabDevices = () => {
     }
   };
 
-  // =================================
-  // DOWNLOAD IMPORT TEMPLATE
-  // =================================
-
   const handleDownloadTemplate = async () => {
+    if (!canManageDevices) return;
+
     try {
       const res = await axiosClient.get(
         '/devices/import/template',
@@ -268,12 +356,9 @@ const TabDevices = () => {
     }
   };
 
-  // =================================
-  // IMPORT DEVICES
-  // =================================
-
   const handleImport = async (e) => {
     e.preventDefault();
+    if (!canManageDevices) return;
 
     if (!importFile) {
       alert('Vui lòng chọn file Excel!');
@@ -328,7 +413,6 @@ const TabDevices = () => {
         ...prev,
         page: 0,
       }));
-
     } catch (err) {
       console.error('Lỗi import thiết bị:', err);
 
@@ -340,10 +424,6 @@ const TabDevices = () => {
       setImporting(false);
     }
   };
-
-  // =================================
-  // RENDER DEVICE STATUS
-  // =================================
 
   const renderStatus = (status) => {
     if (status === 'UP') {
@@ -369,17 +449,11 @@ const TabDevices = () => {
     );
   };
 
-  // =================================
-  // RENDER
-  // =================================
-
   return (
     <section className="dashboard-section">
 
-      {/* TOOLBAR */}
       <div className="user-toolbar">
 
-        {/* SEARCH */}
         <div className="search-container">
           <input
             type="text"
@@ -398,88 +472,98 @@ const TabDevices = () => {
           </button>
         </div>
 
-        {/* DEVICE ACTIONS */}
-        <div className="device-actions">
+        {canManageDevices ? (
+          <div className="device-actions">
 
-          {/* CREATE DEVICE PAGE */}
-          <button
-            type="button"
-            className="add-device-button"
-            onClick={handleNavigateCreate}
-          >
-            + Thêm Thiết Bị
-          </button>
+            <button
+              type="button"
+              className="add-device-button"
+              onClick={handleNavigateCreate}
+            >
+              + Thêm Thiết Bị
+            </button>
 
-          {/* DROPDOWN */}
-          <button
-            type="button"
-            className="device-action-dropdown-button"
-            onClick={() =>
-              setIsDropdownOpen((prev) => !prev)
-            }
-            title="Thao tác thiết bị"
-          >
-            ▾
-          </button>
+            <button
+              type="button"
+              className="device-action-dropdown-button"
+              onClick={() =>
+                setIsDropdownOpen((prev) => !prev)
+              }
+              title="Thao tác thiết bị"
+            >
+              ▾
+            </button>
 
-          {isDropdownOpen && (
-            <div className="device-dropdown">
+            {isDropdownOpen && (
+              <div className="device-dropdown">
 
-              <button
-                type="button"
-                className="device-dropdown-item delete-item"
-                onClick={handleBulkDelete}
-              >
-                🗑️ Xóa thiết bị
-                {selectedIds.length > 0 &&
-                  ` (${selectedIds.length})`}
-              </button>
+                <button
+                  type="button"
+                  className="device-dropdown-item delete-item"
+                  onClick={handleBulkDelete}
+                >
+                  🗑️ Xóa thiết bị
+                  {selectedIds.length > 0 &&
+                    ` (${selectedIds.length})`}
+                </button>
 
-              <button
-                type="button"
-                className="device-dropdown-item"
-                onClick={() => {
-                  setIsDropdownOpen(false);
-                  setImportFile(null);
-                  setShowImport(true);
-                }}
-              >
-                📥 Thêm thiết bị từ file
-              </button>
+                <button
+                  type="button"
+                  className="device-dropdown-item"
+                  onClick={() => {
+                    setIsDropdownOpen(false);
+                    setImportFile(null);
+                    setShowImport(true);
+                  }}
+                >
+                  📥 Thêm thiết bị từ file
+                </button>
 
-              <button
-                type="button"
-                className="device-dropdown-item"
-                onClick={handleExport}
-              >
-                📤 Xuất file thiết bị
-              </button>
+                <button
+                  type="button"
+                  className="device-dropdown-item"
+                  onClick={handleExport}
+                >
+                  📤 Xuất file thiết bị
+                </button>
 
-            </div>
-          )}
+              </div>
+            )}
 
-        </div>
+          </div>
+        ) : (
+          canExportDevices && (
+            <button
+              type="button"
+              className="search-button"
+              onClick={handleExport}
+            >
+              📤 Xuất file thiết bị
+            </button>
+          )
+        )}
       </div>
 
-      {/* DEVICE TABLE */}
       <div className="user-table-wrapper">
         <table className="user-table">
 
           <thead>
             <tr>
 
-              <th
-                style={{
-                  width: '40px',
-                  textAlign: 'center',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={isAllSelected}
-                  onChange={handleSelectAll}
-                />
-              </th>
+              {canManageDevices && (
+                <th
+                  style={{
+                    width: '40px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={handleSelectAll}
+                  />
+                </th>
+              )}
 
               <th
                 onClick={() => handleSort('deviceName')}
@@ -525,18 +609,20 @@ const TabDevices = () => {
                   onClick={() => navigate(`/devices/${device.id}`)}
                 >
 
-                  <td
-                    style={{ textAlign: 'center' }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(device.id)}
-                      onChange={(e) =>
-                        handleSelectOne(e, device)
-                      }
-                    />
-                  </td>
+                  {canManageDevices && (
+                    <td
+                      style={{ textAlign: 'center' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(device.id)}
+                        onChange={(e) =>
+                          handleSelectOne(e, device)
+                        }
+                      />
+                    </td>
+                  )}
 
                   <td>{device.deviceName}</td>
 
@@ -553,7 +639,7 @@ const TabDevices = () => {
             ) : (
               <tr>
                 <td
-                  colSpan="5"
+                  colSpan={canManageDevices ? 5 : 4}
                   className="empty-user-table"
                 >
                   Chưa có thiết bị nào được kết nối tới hệ thống.
@@ -565,7 +651,6 @@ const TabDevices = () => {
         </table>
       </div>
 
-      {/* PAGINATION */}
       {totalPages > 1 && (
         <div
           style={{
@@ -650,11 +735,7 @@ const TabDevices = () => {
         </div>
       )}
 
-      {/* =================================
-          IMPORT DEVICE MODAL
-      ================================= */}
-
-      {showImport && (
+      {canManageDevices && showImport && (
         <div className="import-modal-overlay">
 
           <div className="import-modal">

@@ -8,6 +8,7 @@ import com.network_monitor.portal_service.service.MetricService;
 
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,6 +26,7 @@ public class MetricController {
     // ============================================
 
     @PostMapping
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR')")    
     public ApiResponse<MetricResponse> insertMetric(
             @RequestBody MetricRequest request
     ) {
@@ -36,6 +38,7 @@ public class MetricController {
     // ============================================
 
     @DeleteMapping("/expired")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR')")
     public ApiResponse<Integer> deleteExpiredMetrics() {
         return metricService.deleteExpiredMetrics();
     }
@@ -45,6 +48,7 @@ public class MetricController {
     // ============================================
 
     @GetMapping("/{deviceId}/latest")
+    @PreAuthorize("isAuthenticated()")
     public ApiResponse<Map<String, Object>> getLatestMetrics(
             @PathVariable Long deviceId
     ) {
@@ -56,6 +60,7 @@ public class MetricController {
     // ============================================
 
     @GetMapping("/{deviceId}/cpu/history")
+    @PreAuthorize("isAuthenticated()")
     public ApiResponse<List<MetricResponse>> getCpuHistory(
             @PathVariable Long deviceId
     ) {
@@ -67,6 +72,7 @@ public class MetricController {
     // ============================================
 
     @GetMapping("/{deviceId}/ram/history")
+    @PreAuthorize("isAuthenticated()")
     public ApiResponse<List<MetricResponse>> getRamHistory(
             @PathVariable Long deviceId
     ) {

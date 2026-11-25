@@ -14,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -36,6 +37,7 @@ public class DeviceCredentialController {
     // =========================================================
 
     @PostMapping
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<DeviceCredentialResponse>> addCredential(
             @Valid @RequestBody DeviceCredentialRequest request) {
 
@@ -58,6 +60,7 @@ public class DeviceCredentialController {
             value = "/import",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> importCredentials(
             @RequestParam("deviceId") Long deviceId,
             @RequestParam("file") MultipartFile file) {
@@ -81,6 +84,7 @@ public class DeviceCredentialController {
     // =========================================================
 
     @GetMapping("/export")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR', 'ROLE_REPORT_MANAGER')")
     public ResponseEntity<byte[]> exportCredentials(
             @RequestParam("deviceId") Long deviceId) throws IOException {
 
@@ -97,6 +101,7 @@ public class DeviceCredentialController {
     // =========================================================
 
     @GetMapping("/import/template")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<byte[]> downloadCredentialImportTemplate()
             throws IOException {
 
@@ -113,6 +118,7 @@ public class DeviceCredentialController {
     // =========================================================
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> updateCredential(
             @PathVariable Long id,
             @Valid @RequestBody DeviceCredentialRequest request) {
@@ -133,6 +139,7 @@ public class DeviceCredentialController {
     // =========================================================
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteCredential(
             @PathVariable Long id) {
 
@@ -152,6 +159,7 @@ public class DeviceCredentialController {
     // =========================================================
 
     @DeleteMapping("/device/{deviceId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteCredentialsByDeviceId(
             @PathVariable Long deviceId) {
 
@@ -171,6 +179,7 @@ public class DeviceCredentialController {
     // =========================================================
 
     @GetMapping("/device/{deviceId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Page<DeviceCredentialResponse>> getCredentialsByDeviceId(
             @PathVariable Long deviceId,
             @ModelAttribute SearchRequest request) {
@@ -189,6 +198,7 @@ public class DeviceCredentialController {
     // =========================================================
 
     @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<DeviceCredentialResponse>> getCredentialById(
             @PathVariable Long id) {
 

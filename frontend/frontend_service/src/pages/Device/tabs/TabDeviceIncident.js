@@ -5,8 +5,133 @@ import './TabDeviceIncident.css';
 
 const PAGE_SIZE = 10;
 
-const TabDeviceIncident = ({ deviceId, device }) => {
+const ALLOWED_VIEW_ROLES = new Set([
+  'ROLE_SUPER_ADMIN',
+  'ROLE_NETWORK_ADMIN',
+  'ROLE_NOC_OPERATOR',
+  'ROLE_REPORT_MANAGER',
+  'ROLE_GUEST_VIEWER',
+]);
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return '';
+  const trimmed = role.trim().toUpperCase();
+  if (!trimmed) return '';
+  return trimmed.startsWith('ROLE_') ? trimmed : `ROLE_${trimmed}`;
+};
+
+const extractRoles = (source) => {
+  const rolesSet = new Set();
+  if (!source) return rolesSet;
+
+  const pushRole = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach((item) => pushRole(item));
+      return;
+    }
+    if (typeof val === 'string') {
+      val
+        .split(/[\s,]+/)
+        .map((r) => normalizeRole(r))
+        .filter(Boolean)
+        .forEach((r) => rolesSet.add(r));
+    } else if (typeof val === 'object') {
+      pushRole(val.roleName || val.role_name || val.name || val.authority || val.role);
+    }
+  };
+
+  pushRole(source.roleName);
+  pushRole(source.role_name);
+  pushRole(source.role);
+  pushRole(source.authority);
+  pushRole(source.roles);
+  pushRole(source.authorities);
+  pushRole(source.realmRoles);
+  pushRole(source.realm_roles);
+  pushRole(source.realm_access?.roles);
+  pushRole(source.scope);
+
+  return rolesSet;
+};
+
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const jsonStr = decodeURIComponent(
+      atob(padded)
+        .split('')
+        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+        .join('')
+    );
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+};
+
+const readStoredUser = () => {
+  try {
+    const rawUser = localStorage.getItem('current_user');
+    if (rawUser) {
+      return JSON.parse(rawUser);
+    }
+  } catch {
+  }
+
+  const storedRole = localStorage.getItem('user_role');
+  let storedRoles = [];
+  try {
+    const rawRoles = localStorage.getItem('user_roles');
+    if (rawRoles) {
+      const parsed = JSON.parse(rawRoles);
+      if (Array.isArray(parsed)) storedRoles = parsed;
+    }
+  } catch {
+  }
+
+  if (storedRole || storedRoles.length > 0) {
+    return {
+      roleName: storedRole || '',
+      roles: storedRoles,
+    };
+  }
+
+  const accessToken = localStorage.getItem('access_token');
+  if (accessToken) {
+    const claims = decodeJwtPayload(accessToken);
+    if (claims) {
+      return claims;
+    }
+  }
+
+  return null;
+};
+
+const TabDeviceIncident = ({
+  deviceId,
+  device,
+  currentUser,
+}) => {
   const navigate = useNavigate();
+
+  const resolvedUser = useMemo(
+    () => currentUser || readStoredUser(),
+    [currentUser]
+  );
+
+  const userRoles = useMemo(
+    () => extractRoles(resolvedUser),
+    [resolvedUser]
+  );
+
+  const canViewIncidents = useMemo(() => {
+    if (!resolvedUser || userRoles.size === 0) return false;
+    return Array.from(userRoles).some((role) => ALLOWED_VIEW_ROLES.has(role));
+  }, [resolvedUser, userRoles]);
 
   const [summaries, setSummaries] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -28,7 +153,7 @@ const TabDeviceIncident = ({ deviceId, device }) => {
   }, [deviceId]);
 
   const fetchSummaries = useCallback(async () => {
-    if (!deviceId) return;
+    if (!deviceId || !canViewIncidents) return;
 
     try {
       setLoading(true);
@@ -59,7 +184,7 @@ const TabDeviceIncident = ({ deviceId, device }) => {
     } finally {
       setLoading(false);
     }
-  }, [deviceId, page, appliedKeyword, sortBy, direction]);
+  }, [deviceId, canViewIncidents, page, appliedKeyword, sortBy, direction]);
 
   useEffect(() => {
     fetchSummaries();
@@ -159,6 +284,20 @@ const TabDeviceIncident = ({ deviceId, device }) => {
     const num = Number(val);
     return Number.isFinite(num) ? Number(num.toFixed(2)) : '—';
   };
+
+  if (!canViewIncidents) {
+    return (
+      <section className="dashboard-section">
+        <div className="permission-denied-box">
+          <div className="permission-denied-icon">!</div>
+          <h3 className="permission-denied-title">Không có quyền truy cập</h3>
+          <p className="permission-message">
+            Bạn không có quyền xem danh sách sự cố của thiết bị này.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   const startItem = totalElements === 0 ? 0 : page * PAGE_SIZE + 1;
   const endItem = Math.min((page + 1) * PAGE_SIZE, totalElements);
@@ -266,7 +405,12 @@ const TabDeviceIncident = ({ deviceId, device }) => {
                   onClick={() =>
                     navigate(
                       `/devices/${deviceId}/incidents/${encodeURIComponent(item.metricType)}`,
-                      { state: { device, metricSummary: item } }
+                      {
+                        state: {
+                          device,
+                          metricSummary: item,
+                        },
+                      }
                     )
                   }
                 >

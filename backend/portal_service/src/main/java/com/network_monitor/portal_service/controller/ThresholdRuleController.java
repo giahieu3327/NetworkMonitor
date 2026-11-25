@@ -13,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -29,6 +30,7 @@ public class ThresholdRuleController {
     private final ThresholdRuleService thresholdRuleService;
 
     @GetMapping("/device/{deviceId}/allowed-metrics")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<List<AllowedMetricResponse>>> getAllowedMetrics(
             @PathVariable Long deviceId
     ) {
@@ -39,6 +41,7 @@ public class ThresholdRuleController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<ThresholdRuleResponse>> getRuleById(
             @PathVariable Long id
     ) {
@@ -48,6 +51,7 @@ public class ThresholdRuleController {
     }
 
     @GetMapping("/device/{deviceId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Page<ThresholdRuleResponse>> getRulesByDevice(
             @PathVariable Long deviceId,
             @ModelAttribute SearchRequest request
@@ -56,6 +60,7 @@ public class ThresholdRuleController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR')")
     public ResponseEntity<ApiResponse<ThresholdRuleResponse>> insertRule(
             @RequestBody ThresholdRuleRequest request
     ) {
@@ -65,6 +70,7 @@ public class ThresholdRuleController {
     }
 
     @PostMapping(value = "/device/{deviceId}/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> createRulesFromExcel(
             @PathVariable Long deviceId,
             @RequestParam("file") MultipartFile file
@@ -76,6 +82,7 @@ public class ThresholdRuleController {
     }
 
     @GetMapping("/device/{deviceId}/export")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR', 'ROLE_REPORT_MANAGER')")
     public ResponseEntity<byte[]> exportRules(
             @PathVariable Long deviceId
     ) throws IOException {
@@ -99,6 +106,7 @@ public class ThresholdRuleController {
     }
 
     @GetMapping("/import-template")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR')")
     public ResponseEntity<byte[]> downloadRuleImportTemplate() throws IOException {
         byte[] content = thresholdRuleService.downloadRuleImportTemplate();
 
@@ -120,6 +128,7 @@ public class ThresholdRuleController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> updateRule(
             @PathVariable Long id,
             @RequestBody ThresholdRuleRequest request
@@ -130,6 +139,7 @@ public class ThresholdRuleController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN', 'ROLE_NETWORK_ADMIN', 'ROLE_NOC_OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteRule(
             @PathVariable Long id
     ) {
